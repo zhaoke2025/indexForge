@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能旅行问答系统 · 暗色模式 · 黄色主题 · 直角版</title>
+    <script src="https://cdn.tailwindcss.com">
+    </script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script>
+        window.AppData = window.AppData || {
+            mock: true
+        };
+    </script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#F59E0B',
+                        secondary: '#FBBF24',
+                        accent: '#F59E0B',
+                        dark: '#0F172A',
+                        light: '#F8FAFC',
+                        success: '#10B981',
+                        warning: '#F59E0B',
+                        danger: '#EF4444',
+                        'text-primary': '#F1F5F9',
+                        'text-secondary': '#94A3B8',
+                        'border-light': '#334155'
+                    },
+                    fontFamily: {
+                        'modern': ['"PingFang SC"', 'Inter', 'Segoe UI', 'Microsoft YaHei', 'sans-serif'],
+                    },
+                    borderRadius: {
+                        'none': '0px',
+                        'DEFAULT': '0px',
+                        'card': '0px'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: "PingFang SC", "微软雅黑", "Microsoft YaHei", "Inter", -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-weight: 500;
+            background-color: #0F172A;
+            color: #F1F5F9;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #334155;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #64748B;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #F59E0B;
+        }
+
+        .app-container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            width: 100%;
+            overflow: hidden;
+            background-color: #0F172A;
+        }
+
+        .app-header {
+            background-color: #1E293B;
+            border-bottom: 1px solid #334155;
+            height: 64px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 24px;
+            z-index: 30;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .sidebar-toggle-btn {
+            background: transparent;
+            border: none;
+            color: #94A3B8;
+            font-size: 1.3rem;
+            cursor: pointer;
+            padding: 6px 10px;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 0px;
+        }
+
+        .sidebar-toggle-btn:hover {
+            background-color: #334155;
+            color: #F59E0B;
+        }
+
+        .app-header h1 {
+            font-family: "PingFang SC", "微软雅黑", "Microsoft YaHei", sans-serif;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            color: #F1F5F9;
+            margin: 0;
+            font-size: 1.25rem;
+        }
+
+        .app-main {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+            background-color: #0F172A;
+        }
+
+        .app-sidebar {
+            width: 260px;
+            background-color: #1E293B;
+            border-right: 1px solid #334155;
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+            overflow-y: auto;
+            overflow-x: hidden;
+            transition: width 0.25s ease;
+            position: relative;
+        }
+
+        .sidebar-menu-container {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+
+        .app-sidebar.sidebar-collapsed {
+            width: 72px;
+        }
+
+        .nav-primary-item {
+            display: flex;
+            align-items: center;
+            width: 100%;
+            padding: 12px 20px;
+            margin: 0;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            color: #CBD5E1;
+            font-weight: 500;
+            gap: 12px;
+            border-left: none;
+            box-sizing: border-box;
+            font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+            white-space: nowrap;
+        }
+
+        .nav-primary-item i {
+            width: 22px;
+            font-size: 1.2rem;
+            color: #94A3B8;
+            transition: color 0.2s;
+            flex-shrink: 0;
+        }
+
+        .nav-primary-item:hover {
+            background-color: #334155;
+            color: #F1F5F9;
+        }
+
+        .nav-primary-item:hover i {
+            color: #F59E0B;
+        }
+
+        .nav-primary-active {
+            background-color: #422006;
+            color: #F59E0B;
+            border-left: none;
+            box-shadow: none;
+        }
+
+        .nav-primary-active i {
+            color: #F59E0B;
+        }
+
+        .sidebar-collapsed .nav-primary-item span {
+            display: none;
+        }
+
+        .sidebar-collapsed .nav-primary-item {
+            justify-content: center;
+            padding: 12px 0;
+        }
+
+        .dynamic-submenu-wrapper {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            margin: 0;
+            padding: 0;
+            border-left: none;
+            background-color: #1E293B;
+            transition: all 0.2s;
+        }
+
+        .sidebar-collapsed .dynamic-submenu-wrapper {
+            display: none;
+        }
+
+        .submenu-item {
+            display: flex;
+            align-items: center;
+            width: 100%;
+            padding: 10px 20px 10px 48px;
+            margin: 0;
+            cursor: pointer;
+            font-size: 0.85rem;
+            color: #94A3B8;
+            transition: all 0.2s;
+            gap: 10px;
+            border-left: none;
+            box-sizing: border-box;
+            font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+            white-space: nowrap;
+        }
+
+        .submenu-item i {
+            display: none;
+        }
+
+        .submenu-item:hover {
+            background-color: #334155;
+            color: #F1F5F9;
+        }
+
+        .submenu-active {
+            background-color: #422006;
+            color: #F59E0B;
+            font-weight: 500;
+            border-left: none;
+            box-shadow: none;
+        }
+
+        .app-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px 24px;
+            background-color: #0F172A;
+            transition: all 0.25s;
+        }
+
+        #contentFrame {
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: #1E293B;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+        }
+
+        .user-menu {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .avatar-circle {
+            width: 36px;
+            height: 36px;
+            background: linear-gradient(135deg, #F59E0B, #D97706);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+            border-radius: 50%;
+        }
+
+        .avatar-circle i {
+            color: white;
+            font-size: 1.2rem;
+            line-height: 1;
+        }
+
+        .user-name {
+            color: #F1F5F9;
+            font-size: 0.95rem;
+            font-weight: 500;
+            font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+        }
+
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(2px);
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: fadeIn 0.2s ease;
+        }
+
+        .modal-dialog-custom {
+            background: #1E293B;
+            box-shadow: 0 20px 35px -8px rgba(0, 0, 0, 0.35);
+            width: 440px;
+            max-width: 92vw;
+            overflow: hidden;
+        }
+
+        .modal-header-custom {
+            padding: 16px 20px;
+            border-bottom: 1px solid #334155;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: #0F172A;
+            font-weight: 600;
+            font-size: 15px;
+            color: #F1F5F9;
+            font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+        }
+
+        .modal-header-custom .close-btn {
+            width: 30px;
+            height: 30px;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            font-size: 18px;
+            color: #94A3B8;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: 0.2s;
+        }
+
+        .modal-header-custom .close-btn:hover {
+            background: #334155;
+            color: #F1F5F9;
+        }
+
+        .modal-body-custom {
+            padding: 20px;
+            font-size: 14px;
+            color: #CBD5E1;
+            line-height: 1.6;
+            background: #1E293B;
+            font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+        }
+
+        .modal-footer-custom {
+            padding: 12px 20px;
+            border-top: 1px solid #334155;
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            background: #0F172A;
+        }
+
+        .btn-custom {
+            padding: 8px 18px;
+            font-size: 13px;
+            font-weight: 500;
+            border: none;
+            cursor: pointer;
+            transition: 0.2s;
+            font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+        }
+
+        .btn-custom-primary {
+            background: #F59E0B;
+            color: #0F172A;
+        }
+
+        .btn-custom-primary:hover {
+            background: #D97706;
+            transform: translateY(-1px);
+            color: #0F172A;
+        }
+
+        .btn-custom-secondary {
+            background: #334155;
+            color: #F1F5F9;
+        }
+
+        .btn-custom-secondary:hover {
+            background: #475569;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+            to {
+                opacity: 1;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <div class="app-header">
+            <div class="header-left">
+                <button class="sidebar-toggle-btn" id="sidebarToggleBtn">
+                    <i class="fa fa-bars" id="toggleIcon"></i>
+                </button>
+                <h1>基于智能体的旅行领域问答系统</h1>
+            </div>
+            <div class="user-menu">
+                <div class="avatar-circle">
+                    <i class="fa fa-user-o"></i>
+                </div>
+                <span class="user-name">旅行探索者</span>
+            </div>
+        </div>
+
+        <div class="app-main">
+            <div class="app-sidebar" id="appSidebar">
+                <div class="sidebar-menu-container" id="primaryMenuContainer"></div>
+            </div>
+
+            <div class="app-content" id="rightContent">
+                <iframe id="contentFrame" class="w-full h-full" frameborder="0" sandbox="allow-same-origin allow-scripts allow-forms allow-modals allow-popups"></iframe>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 侧边栏折叠逻辑（按钮在顶栏）
+        const sidebar = document.getElementById('appSidebar');
+        const toggleBtn = document.getElementById('sidebarToggleBtn');
+        const toggleIcon = document.getElementById('toggleIcon');
+        let isCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
+
+        function setSidebarCollapsed(collapsed) {
+            if (collapsed) {
+                sidebar.classList.add('sidebar-collapsed');
+                toggleIcon.classList.remove('fa-bars');
+                toggleIcon.classList.add('fa-angle-double-right');
+            } else {
+                sidebar.classList.remove('sidebar-collapsed');
+                toggleIcon.classList.remove('fa-angle-double-right');
+                toggleIcon.classList.add('fa-bars');
+            }
+            localStorage.setItem('sidebarCollapsed', collapsed);
+        }
+
+        function toggleSidebar() {
+            isCollapsed = !isCollapsed;
+            setSidebarCollapsed(isCollapsed);
+            window.dispatchEvent(new Event('resize'));
+        }
+
+        toggleBtn.addEventListener('click', toggleSidebar);
+        setSidebarCollapsed(isCollapsed);
+
+        // 菜单配置
+        const menuConfig = [{
+            id: 'ai-tools',
+            name: '智能旅行助手',
+            subMenu: [
+                { name: '智能行程规划', file: 'trip-planning' },
+                { name: '旅行百科问答', file: 'travel-qa' },
+                { name: '行程预算分析器', file: 'budget-analyzer' }
+            ]
+        }, {
+            id: 'knowledge',
+            name: '知识库管理',
+            file: 'knowledge-management',
+            subMenu: []
+        }, {
+            id: 'settings',
+            name: '系统设置',
+            file: 'system-settings',
+            subMenu: []
+        }];
+
+        let activePrimaryId = 'ai-tools';
+        let activeSubMenuName = '智能行程规划';
+
+        const primaryContainer = document.getElementById('primaryMenuContainer');
+        const contentFrame = document.getElementById('contentFrame');
+
+        function getPrimaryIcon(id) {
+            const map = {
+                'ai-tools': 'fa-globe',
+                'knowledge': 'fa-database',
+                'settings': 'fa-cog'
+            };
+            return map[id] || 'fa-folder';
+        }
+
+        function removeExistingSubMenu() {
+            const existing = document.querySelector('.dynamic-submenu-wrapper');
+            if (existing) existing.remove();
+        }
+
+        function renderSubMenuInPlace() {
+            removeExistingSubMenu();
+            const activeMenu = menuConfig.find(m => m.id === activePrimaryId);
+            if (!activeMenu || activeMenu.subMenu.length === 0) return;
+            const activeMenuItem = document.querySelector(`.nav-primary-item[data-menu-id="${activePrimaryId}"]`);
+            if (!activeMenuItem) return;
+
+            const wrapper = document.createElement('div');
+            wrapper.className = 'dynamic-submenu-wrapper';
+            activeMenu.subMenu.forEach(sub => {
+                const subItem = document.createElement('div');
+                subItem.className = `submenu-item ${activeSubMenuName === sub.name ? 'submenu-active' : ''}`;
+                subItem.setAttribute('data-sub-name', sub.name);
+                subItem.innerHTML = `<span>${sub.name}</span>`;
+                subItem.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    navigateToSub(sub);
+                });
+                wrapper.appendChild(subItem);
+            });
+            activeMenuItem.insertAdjacentElement('afterend', wrapper);
+        }
+
+        function renderPrimaryMenu() {
+            primaryContainer.innerHTML = '';
+            menuConfig.forEach(menu => {
+                const div = document.createElement('div');
+                div.className = `nav-primary-item ${activePrimaryId === menu.id ? 'nav-primary-active' : ''}`;
+                div.setAttribute('data-menu-id', menu.id);
+                div.innerHTML = `<i class="fa ${getPrimaryIcon(menu.id)}"></i><span>${menu.name}</span>`;
+                div.addEventListener('click', () => onPrimaryMenuClick(menu));
+                primaryContainer.appendChild(div);
+            });
+        }
+
+        function onPrimaryMenuClick(menu) {
+            if (menu.id === activePrimaryId && menu.subMenu.length > 0) return;
+
+            activePrimaryId = menu.id;
+
+            document.querySelectorAll('.nav-primary-item').forEach(el => el.classList.remove('nav-primary-active'));
+            const activeEl = document.querySelector(`.nav-primary-item[data-menu-id="${menu.id}"]`);
+            if (activeEl) activeEl.classList.add('nav-primary-active');
+
+            if (menu.subMenu.length > 0) {
+                if (!activeSubMenuName || !menu.subMenu.some(s => s.name === activeSubMenuName)) {
+                    activeSubMenuName = menu.subMenu[0].name;
+                }
+                renderSubMenuInPlace();
+                loadPage(findSubFileByName(activeSubMenuName));
+            } else {
+                activeSubMenuName = null;
+                removeExistingSubMenu();
+                loadPage(menu.file);
+            }
+        }
+
+        function navigateToSub(sub) {
+            activeSubMenuName = sub.name;
+            const parentMenu = menuConfig.find(m => m.subMenu.some(s => s.name === sub.name));
+            if (parentMenu) {
+                activePrimaryId = parentMenu.id;
+                document.querySelectorAll('.nav-primary-item').forEach(el => el.classList.remove('nav-primary-active'));
+                const activeEl = document.querySelector(`.nav-primary-item[data-menu-id="${parentMenu.id}"]`);
+                if (activeEl) activeEl.classList.add('nav-primary-active');
+            }
+            renderSubMenuInPlace();
+            loadPage(sub.file);
+        }
+
+        function findSubFileByName(subName) {
+            for (let menu of menuConfig) {
+                const sub = menu.subMenu.find(s => s.name === subName);
+                if (sub) return sub.file;
+            }
+            return null;
+        }
+
+        function loadPage(file) {
+            if (!file) {
+                contentFrame.src = 'about:blank';
+                return;
+            }
+            contentFrame.src = `./${file}.html`;
+        }
+
+        window.navigateTo = function(targetName, params = {}) {
+            let subFile = findSubFileByName(targetName);
+            if (subFile) {
+                const parentMenu = menuConfig.find(m => m.subMenu.some(s => s.name === targetName));
+                if (parentMenu) {
+                    activePrimaryId = parentMenu.id;
+                    activeSubMenuName = targetName;
+                    renderPrimaryMenu();
+                    renderSubMenuInPlace();
+                }
+                let url = `./${subFile}.html`;
+                const query = new URLSearchParams(params).toString();
+                if (query) url += '?' + query;
+                contentFrame.src = url;
+                return;
+            }
+
+            for (let menu of menuConfig) {
+                if (menu.name === targetName || menu.file === targetName) {
+                    if (menu.subMenu.length > 0) {
+                        onPrimaryMenuClick(menu);
+                    } else {
+                        activePrimaryId = menu.id;
+                        activeSubMenuName = null;
+                        renderPrimaryMenu();
+                        removeExistingSubMenu();
+                        loadPage(menu.file);
+                    }
+                    return;
+                }
+            }
+            contentFrame.src = `./${targetName}.html`;
+        };
+
+        window.addEventListener('message', function(event) {
+            if (event.data && event.data.action === 'navigateTo') {
+                const { subName, params } = event.data;
+                if (subName) window.navigateTo(subName, params || {});
+            }
+        });
+
+        function showAlert(title, message, type = 'info') {
+            return new Promise((resolve) => {
+                const iconMap = {
+                    info: 'fa-info-circle text-blue-400',
+                    success: 'fa-check-circle text-green-400',
+                    warning: 'fa-exclamation-triangle text-yellow-400',
+                    danger: 'fa-times-circle text-red-400'
+                };
+                const overlay = document.createElement('div');
+                overlay.className = 'modal-overlay';
+                overlay.innerHTML = `
+                    <div class="modal-dialog-custom">
+                        <div class="modal-header-custom">
+                            <span><i class="fa ${iconMap[type] || iconMap.info} mr-2"></i>${title}</span>
+                            <button class="close-btn">&times;</button>
+                        </div>
+                        <div class="modal-body-custom">${message}</div>
+                        <div class="modal-footer-custom">
+                            <button class="btn-custom btn-custom-primary" id="alertOkBtn">确定</button>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(overlay);
+                const close = () => { if (overlay && overlay.parentNode) document.body.removeChild(overlay);
+                    resolve(); };
+                overlay.querySelector('#alertOkBtn').addEventListener('click', close);
+                overlay.querySelector('.close-btn').addEventListener('click', close);
+                overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+            });
+        }
+
+        function showConfirm(title, message, confirmText = '确定', cancelText = '取消') {
+            return new Promise((resolve) => {
+                const overlay = document.createElement('div');
+                overlay.className = 'modal-overlay';
+                overlay.innerHTML = `
+                    <div class="modal-dialog-custom">
+                        <div class="modal-header-custom">
+                            <span><i class="fa fa-question-circle text-yellow-400 mr-2"></i>${title}</span>
+                            <button class="close-btn">&times;</button>
+                        </div>
+                        <div class="modal-body-custom">${message}</div>
+                        <div class="modal-footer-custom">
+                            <button class="btn-custom btn-custom-secondary" id="confirmCancelBtn">${cancelText}</button>
+                            <button class="btn-custom btn-custom-primary" id="confirmOkBtn">${confirmText}</button>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(overlay);
+                const close = (result) => { if (overlay && overlay.parentNode) document.body.removeChild(overlay);
+                    resolve(result); };
+                overlay.querySelector('#confirmOkBtn').addEventListener('click', () => close(true));
+                overlay.querySelector('#confirmCancelBtn').addEventListener('click', () => close(false));
+                overlay.querySelector('.close-btn').addEventListener('click', () => close(false));
+                overlay.addEventListener('click', (e) => { if (e.target === overlay) close(false); });
+            });
+        }
+
+        window.showAlert = showAlert;
+        window.showConfirm = showConfirm;
+
+        function init() {
+            renderPrimaryMenu();
+            const defaultMenu = menuConfig.find(m => m.id === 'ai-tools');
+            if (defaultMenu && defaultMenu.subMenu.length > 0) {
+                activePrimaryId = 'ai-tools';
+                activeSubMenuName = defaultMenu.subMenu[0].name;
+                const primaryItem = document.querySelector(`.nav-primary-item[data-menu-id="ai-tools"]`);
+                if (primaryItem) primaryItem.classList.add('nav-primary-active');
+                renderSubMenuInPlace();
+                loadPage(defaultMenu.subMenu[0].file);
+            } else {
+                loadPage(menuConfig[0]?.file || '');
+            }
+        }
+
+        window.getTheme = () => 'dark';
+        window.onload = init;
+    </script>
+</body>
+</html>
