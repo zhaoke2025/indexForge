@@ -1,11 +1,11 @@
 import { Clipboard, Code2, Download, Eye, RotateCw, Wand2 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import PreviewFrame from '../components/PreviewFrame';
 import SourceCodePanel from '../components/SourceCodePanel';
-import { generateLoginHtml } from '../core/loginGenerator';
+import { api } from '../core/api';
+import type { HistoryRecord, LoginHistoryRecord } from '../core/types';
 import type { DimensionConfig } from '../data/defaultDimensions';
 import type { LoginConfig } from '../data/defaultLoginConfig';
-import { stylePresets } from '../data/stylePresets';
 
 type ViewMode = 'preview' | 'source';
 
@@ -14,35 +14,22 @@ type Props = {
   onChange: (config: LoginConfig) => void;
   dimensions: DimensionConfig[];
   presetId: string;
+  referenceRecord?: HistoryRecord;
+  initialRecord?: LoginHistoryRecord;
+  onGenerated?: () => Promise<void>;
 };
 
-const selectOptions: { key: keyof LoginConfig; label: string; options: string[] }[] = [
-  { key: 'layout', label: '登录框位置', options: ['居中', '偏右'] },
-  { key: 'backgroundType', label: '背景类型', options: ['纯色', '几何图案', '图片通铺', '左右分割'] },
-  { key: 'colorMode', label: '配色方案', options: ['继承系统主色', '独立品牌色', '纯黑白灰'] },
-  { key: 'cardStyle', label: '卡片质感', options: ['跟随系统风格', '纯白实心', '毛玻璃', '半透明', '深色实心'] },
-  { key: 'radius', label: '圆角风格', options: ['8px', '12px', '16px'] },
-  { key: 'brandMode', label: '品牌区域', options: ['纯文字标题', '标题+标语', '纯文字（无标语）'] },
-  { key: 'loginMethod', label: '登录方式组合', options: ['仅账号密码', '账号密码+图形验证码', '账号密码+短信验证码', '手机验证码（无密码）', 'Tab切换（多方式）'] },
-  { key: 'formStyle', label: '表单组件风格', options: ['线框风格', '填充风格', '底部下划线'] },
-  { key: 'assist', label: '辅助功能组合', options: ['无', '仅记住账号', '仅忘记密码', '记住+忘记'] },
-  { key: 'rememberText', label: '记住账号文案', options: ['记住账号', '记住账号（7天）', '记住账号（30天）'] },
-  { key: 'forgotText', label: '忘记密码文案', options: ['忘记密码', '忘记密码？请联系管理员', '忘记密码？联系技术支持'] },
-  { key: 'registerEntry', label: '注册入口', options: ['无', '有入口+注册页面'] },
-  { key: 'loadingState', label: '加载状态', options: ['按钮文字变化', '旋转菊花', '两者都有'] },
-  { key: 'errorMode', label: '错误提示方式', options: ['弹窗提示', '输入框下方文字', '顶部横幅'] },
-  { key: 'footer', label: '底部信息', options: ['无', '仅版权', '版权+版本号', '版权+隐私政策+服务协议'] },
-  { key: 'decoration', label: '装饰元素', options: ['无', '背景光晕', '几何形状', '网格纹理'] },
-  { key: 'demoAccount', label: '预填演示数据', options: ['无', 'admin', 'test', 'demo', 'usertest', 'companytest', 'devtest', 'autotest'] },
-];
-
-export default function LoginGeneratePage({ config, onChange, dimensions, presetId }: Props) {
-  const [html, setHtml] = useState('');
+export default function LoginGeneratePage({ config, onChange, dimensions, presetId, referenceRecord, initialRecord, onGenerated }: Props) {
+  const [html, setHtml] = useState(initialRecord?.html || '');
+  const [record, setRecord] = useState<LoginHistoryRecord | undefined>(initialRecord);
+  const [instruction, setInstruction] = useState('');
+  const [refinementInstruction, setRefinementInstruction] = useState('');
+  const [generating, setGenerating] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('preview');
   const [refreshKey, setRefreshKey] = useState(0);
   const [notice, setNotice] = useState('');
 
-  const preset = useMemo(() => stylePresets.find((item) => item.id === presetId) ?? stylePresets[0], [presetId]);
+  void dimensions; void presetId;
 
   const update = <K extends keyof LoginConfig>(key: K, value: LoginConfig[K]) => {
     onChange({ ...config, [key]: value });
@@ -66,12 +53,34 @@ export default function LoginGeneratePage({ config, onChange, dimensions, preset
     reader.readAsDataURL(file);
   };
 
-  const generate = () => {
-    const result = generateLoginHtml(config, preset, dimensions);
-    setHtml(result.html);
-    setViewMode('preview');
-    setRefreshKey((key) => key + 1);
-    setNotice('login.html 已生成。');
+  const generate = async () => {
+    setGenerating(true);
+    try {
+      const dimensionValues = dimensions.filter((item) => item.enabled).reduce<Record<string, unknown>>((values, item) => {
+        values[item.id] = item.value;
+        return values;
+      }, {});
+      const effectiveConfig = { ...config, ...dimensionValues, version: '', slogan: '' } as LoginConfig;
+      if (effectiveConfig.colorMode !== '独立品牌色') effectiveConfig.brandColor = '';
+      if (effectiveConfig.backgroundType !== '图片通铺') effectiveConfig.backgroundImage = '';
+      const result = await api.generateLogin({ config: effectiveConfig, instruction, sourceGenerationId: referenceRecord?.id });
+      setRecord(result.generation); setHtml(result.generation.html); setViewMode('preview'); setRefreshKey((key) => key + 1);
+      setNotice('login.html 已由 AI 生成并通过校验。');
+      await onGenerated?.();
+    } catch (reason) { setNotice(reason instanceof Error ? reason.message : '登录页生成失败'); }
+    finally { setGenerating(false); }
+  };
+
+  const refine = async () => {
+    if (!record || !refinementInstruction.trim()) return;
+    setGenerating(true);
+    try {
+      const result = await api.refineLogin(record.id, refinementInstruction);
+      setRecord(result.generation); setHtml(result.generation.html); setRefinementInstruction(''); setViewMode('preview'); setRefreshKey((key) => key + 1);
+      setNotice('已根据意见重新生成 login.html。');
+      await onGenerated?.();
+    } catch (reason) { setNotice(reason instanceof Error ? reason.message : '登录页调整失败'); }
+    finally { setGenerating(false); }
   };
 
   const copy = async () => {
@@ -107,42 +116,25 @@ export default function LoginGeneratePage({ config, onChange, dimensions, preset
               <span className="control-label">系统名称</span>
               <input className="text-input" value={config.systemName} onChange={(event) => update('systemName', event.target.value)} />
             </label>
-            <label>
-              <span className="control-label">版本号</span>
-              <input className="text-input" value={config.version} onChange={(event) => update('version', event.target.value)} />
-            </label>
-            <label>
-              <span className="control-label">标语</span>
-              <input className="text-input" value={config.slogan} onChange={(event) => update('slogan', event.target.value)} />
-            </label>
-            <label>
+            {String(dimensions.find((item) => item.id === 'colorMode')?.value) === '独立品牌色' && <label>
               <span className="control-label">独立品牌色</span>
               <div className="grid grid-cols-[44px_minmax(0,1fr)] gap-2">
                 <input className="h-9 w-11 rounded border border-slate-300 bg-white p-1" type="color" value={config.brandColor} onChange={(event) => update('brandColor', event.target.value.toUpperCase())} />
                 <input className="text-input" value={config.brandColor} onChange={(event) => update('brandColor', event.target.value)} />
               </div>
-            </label>
+            </label>}
           </div>
         </div>
 
         <div className="rounded border border-slate-200 bg-white">
           <div className="border-b border-slate-200 px-4 py-3">
             <h2 className="text-sm font-semibold text-slate-900">登录页变体维度</h2>
-            <p className="mt-1 text-xs text-slate-500">覆盖 L1-L17，生成时会继承当前首页主色和风格。</p>
+            <p className="mt-1 text-xs text-slate-500">生成时自动读取“登录页维度”中启用项的默认值。</p>
           </div>
-          <div className="grid grid-cols-2 gap-3 p-4">
-            {selectOptions.map((item) => (
-              <label key={item.key}>
-                <span className="control-label">{item.label}</span>
-                <select className="text-input" value={String(config[item.key])} onChange={(event) => update(item.key, event.target.value as never)}>
-                  {item.options.map((option) => (
-                    <option key={option} value={option}>{option}</option>
-                  ))}
-                </select>
-              </label>
-            ))}
-            {config.backgroundType === '图片通铺' && (
-              <div className="col-span-2 rounded border border-slate-200 bg-slate-50 p-3">
+          <div className="p-4">
+            <div className="flex flex-wrap gap-2">{dimensions.filter((item) => item.enabled).map((item) => <span className="rounded bg-slate-100 px-2 py-1 text-xs text-slate-600" key={item.id}>{item.name}：{String(item.value)}</span>)}</div>
+            {String(dimensions.find((item) => item.id === 'backgroundType')?.value) === '图片通铺' && (
+              <div className="mt-4 rounded border border-slate-200 bg-slate-50 p-3">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <div className="text-sm font-medium text-slate-900">背景图片</div>
@@ -167,16 +159,22 @@ export default function LoginGeneratePage({ config, onChange, dimensions, preset
           </div>
         </div>
 
+        <div className="rounded border border-slate-200 bg-white p-4">
+          <div className="text-sm font-semibold text-slate-900">AI 生成要求</div>
+          <div className="mt-1 text-xs text-slate-500">视觉参考：首页「{referenceRecord?.displayName || '尚未生成'}」；首页仅用于提取风格。</div>
+          <textarea className="text-input mt-3 min-h-20" placeholder="选填：补充本次登录页要求" value={instruction} onChange={(event) => setInstruction(event.target.value)} />
+        </div>
         <div className="flex gap-2">
-          <button className="primary-button flex-1" onClick={generate} type="button">
+          <button className="primary-button flex-1" disabled={generating || !referenceRecord} onClick={generate} type="button">
             <Wand2 size={16} />
-            生成 login.html
-          </button>
-          <button className="secondary-button" onClick={generate} type="button">
-            <RotateCw size={16} />
-            重新生成
+            {generating ? 'AI 生成中…' : 'AI 智能生成'}
           </button>
         </div>
+        {record && <div className="rounded border border-slate-200 bg-white p-4">
+          <div className="text-sm font-semibold text-slate-900">继续调整</div>
+          <textarea className="text-input mt-3 min-h-20" placeholder="例如：登录框向右移动，背景改为浅色几何图案。" value={refinementInstruction} onChange={(event) => setRefinementInstruction(event.target.value)} />
+          <button className="secondary-button mt-3 w-full justify-center" disabled={generating || !refinementInstruction.trim()} onClick={refine} type="button"><RotateCw size={16} />根据意见重新生成</button>
+        </div>}
         {notice && <div className="rounded border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">{notice}</div>}
       </section>
 

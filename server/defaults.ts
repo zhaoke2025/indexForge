@@ -1,0 +1,85 @@
+export type SeedDimension = {
+  id: string; name: string; groupName: string; description: string;
+  valueType: 'text' | 'boolean' | 'single-select'; defaultValue: string | boolean; options: string[];
+};
+
+export const seedDimensions: SeedDimension[] = [
+  { id: 'primary', name: '配色方案', groupName: '视觉基因层', description: '主色、辅色、背景色、文字色和状态色。', valueType: 'text', defaultValue: '#2563EB', options: [] },
+  { id: 'radius', name: '圆角半径', groupName: '视觉基因层', description: '按钮、侧栏、iframe 和弹窗的圆角控制。', valueType: 'single-select', defaultValue: '6px', options: ['0px', '4px', '6px', '8px', '12px', '16px', '自定义'] },
+  { id: 'font', name: '字体家族', groupName: '视觉基因层', description: '系统主要字体栈。', valueType: 'text', defaultValue: '"PingFang SC", "Microsoft YaHei", "Inter", sans-serif', options: [] },
+  { id: 'mode', name: '明暗模式', groupName: '视觉基因层', description: '页面整体明暗关系。', valueType: 'single-select', defaultValue: '浅色', options: ['浅色', '深色', '纯黑极客', '自定义'] },
+  { id: 'shadow', name: '阴影深度', groupName: '视觉基因层', description: '顶部栏、内容框和弹层的层次。', valueType: 'single-select', defaultValue: '标准', options: ['无', '轻', '标准', '强', '自定义'] },
+  { id: 'sidebarWidth', name: '侧边栏宽度', groupName: '布局结构层', description: '左侧导航占用宽度。', valueType: 'single-select', defaultValue: '260px', options: ['232px', '248px', '260px', '280px', '320px'] },
+  { id: 'sidebarScroll', name: '侧边栏滚动策略', groupName: '布局结构层', description: '侧边栏菜单是否独立滚动。', valueType: 'single-select', defaultValue: '独立滚动', options: ['独立滚动', '整体滚动'] },
+  { id: 'headerHeight', name: '顶栏高度与元素', groupName: '布局结构层', description: '顶栏高度和信息密度。', valueType: 'single-select', defaultValue: '60px', options: ['48px', '56px', '60px', '64px'] },
+  { id: 'contentBg', name: '内容区背景材质', groupName: '布局结构层', description: 'iframe 外层背景效果。', valueType: 'single-select', defaultValue: '浅灰', options: ['纯色', '深色', '浅灰'] },
+  { id: 'sidebarToggle', name: '侧边栏折叠控制', groupName: '布局结构层', description: '是否保留侧边栏折叠按钮，并选择合适的位置。', valueType: 'boolean', defaultValue: true, options: [] },
+  { id: 'sidebarTogglePosition', name: '侧边栏折叠按钮位置', groupName: '布局结构层', description: '折叠按钮可放在标题左侧、标题右侧、侧边栏底部或用户信息左侧。', valueType: 'single-select', defaultValue: '标题左侧', options: ['标题左侧', '标题右侧', '侧边栏底部', '用户信息左侧'] },
+  { id: 'sidebarToggleIcon', name: '侧边栏折叠图标', groupName: '信息装饰层', description: '选择折叠按钮展开和收起时使用的图标样式。', valueType: 'single-select', defaultValue: '菜单', options: ['菜单', '双箭头', '单箭头', '面板折叠'] },
+  { id: 'activeMenu', name: '菜单激活态样式', groupName: '交互反馈层', description: '一级菜单和子菜单选中样式。', valueType: 'single-select', defaultValue: '背景色块', options: ['背景色块', '左边框', '仅文字'] },
+  { id: 'submenuTrigger', name: '子菜单展开触发器', groupName: '交互反馈层', description: '一级菜单右侧是否显示层级提示。', valueType: 'single-select', defaultValue: '无', options: ['无', '箭头', '加号'] },
+  { id: 'submenuAnimation', name: '子菜单展开动画', groupName: '交互反馈层', description: '子菜单展开和收起速度。', valueType: 'single-select', defaultValue: '标准', options: ['无', '快速', '标准', '柔和'] },
+  { id: 'iframeLoading', name: 'iframe 加载状态', groupName: '交互反馈层', description: '子页面加载期间反馈。', valueType: 'single-select', defaultValue: '空白', options: ['空白', '深色空白', '浅色空白'] },
+  { id: 'menuIcons', name: '菜单图标系统', groupName: '信息装饰层', description: '菜单左侧图标风格。', valueType: 'single-select', defaultValue: 'FontAwesome', options: ['FontAwesome', '弱化', '隐藏'] },
+  { id: 'menuDivider', name: '菜单分割线', groupName: '信息装饰层', description: '菜单项之间是否显示分割线。', valueType: 'boolean', defaultValue: false, options: [] },
+  { id: 'menuBadge', name: '菜单角标/徽章', groupName: '信息装饰层', description: '菜单项右侧标记。', valueType: 'single-select', defaultValue: '无', options: ['无', 'NEW', 'Beta'] },
+  { id: 'sidebarFooter', name: '侧边栏底部信息', groupName: '信息装饰层', description: '侧边栏底部版本信息。', valueType: 'text', defaultValue: '版本信息', options: [] },
+  { id: 'userInfo', name: '顶栏用户信息与下拉菜单', groupName: '信息装饰层', description: '用户名、角色、头像以及右上角操作。', valueType: 'single-select', defaultValue: '头像+姓名+角色+下拉', options: ['头像+姓名+角色+下拉', '头像+姓名+角色', '头像+姓名+下拉', '头像+姓名', '仅姓名+下拉', '仅姓名', '移除用户'] },
+  { id: 'menuOrder', name: '菜单顺序与重组', groupName: '信息装饰层', description: '控制菜单排序方式。', valueType: 'single-select', defaultValue: '默认', options: ['默认', '一级菜单按名称排序', '子菜单按名称排序'] },
+  { id: 'spacing', name: '间距', groupName: '额外基础层', description: '页面内边距和菜单间距。', valueType: 'single-select', defaultValue: '标准', options: ['紧凑', '标准', '宽松', '自定义'] },
+  { id: 'borderStyle', name: '全局边框样式', groupName: '视觉基因层', description: '边框强度与形态。', valueType: 'single-select', defaultValue: '标准', options: ['无', '标准', '强调', '自定义'] },
+  { id: 'scrollbar', name: '滚动条外观', groupName: '视觉基因层', description: '滚动条宽度和颜色。', valueType: 'single-select', defaultValue: '标准', options: ['细', '标准', '强调', '自定义'] },
+  { id: 'transitionSpeed', name: '全局过渡速度', groupName: '交互反馈层', description: 'hover、active、展开折叠的过渡速度。', valueType: 'single-select', defaultValue: '标准', options: ['快速', '标准', '柔和', '自定义'] },
+  { id: 'contentMaxWidth', name: '内容区域最大宽度与对齐', groupName: '布局结构层', description: '内容区是否全屏或居中。', valueType: 'single-select', defaultValue: '全屏', options: ['全屏', '宽屏居中', '文档居中'] },
+];
+
+export const seedRequirements = [
+  ['R1', '标题与品牌', '顶栏 h1 只能输出纯文字。', 'required', 'builtin', 'h1-text'],
+  ['R2', 'Tailwind 配置', '必须保留 tailwind.config 配置块。', 'required', 'builtin', 'tailwind-config'],
+  ['R3', '子菜单内联展开', '子菜单必须插入到当前一级菜单项下方。', 'required', 'builtin', 'inline-submenu'],
+  ['R4', '侧边栏位置', '侧边栏必须在主内容左侧。', 'required', 'ai', null],
+  ['R5', '空白 iframe', '不存在的子页面不能注入占位文字。', 'required', 'builtin', 'blank-iframe'],
+  ['R6', '固定主题', '单个 HTML 不提供运行时主题切换。', 'required', 'builtin', 'fixed-theme'],
+  ['R7', 'Tailwind 优先', '样式优先使用 Tailwind 或母版已有类。', 'recommended', 'ai', null],
+  ['R8', '核心 JS 逻辑', '不得破坏菜单、iframe 和 message 监听逻辑。', 'required', 'builtin', 'core-js'],
+  ['R9', '用户信息', '用户名称、角色、头像可以按需变化。', 'flexible', 'ai', null],
+] as const;
+
+export const seedLoginDimensions: SeedDimension[] = [
+  { id: 'layout', name: '登录框位置', groupName: '布局', description: '登录卡片在视口中的位置；偏右时登录页左上角也要显示标题。', valueType: 'single-select', defaultValue: '居中', options: ['居中', '偏右'] },
+  { id: 'backgroundType', name: '背景类型', groupName: '视觉', description: '登录页背景呈现方式，禁止任何形式的渐变。', valueType: 'single-select', defaultValue: '几何图案', options: ['纯色', '纹理', '几何图案', '图片通铺'] },
+  { id: 'colorMode', name: '配色方案', groupName: '视觉', description: '登录页配色来源。', valueType: 'single-select', defaultValue: '继承系统主色', options: ['继承系统主色', '独立品牌色', '纯黑白灰'] },
+  { id: 'cardStyle', name: '卡片质感', groupName: '视觉', description: '登录卡片的视觉质感。', valueType: 'single-select', defaultValue: '纯白实心', options: ['纯白实心', '毛玻璃', '半透明', '深色实心'] },
+  { id: 'radius', name: '圆角风格', groupName: '视觉', description: '登录卡片及控件圆角。', valueType: 'single-select', defaultValue: '12px', options: ['8px', '12px', '16px'] },
+  { id: 'brandMode', name: '品牌区域', groupName: '内容', description: '系统标题及欢迎语组合，禁止品牌宣传标语。', valueType: 'single-select', defaultValue: '标题+欢迎语', options: ['纯文字标题', '标题+欢迎语'] },
+  { id: 'loginMethod', name: '登录方式组合', groupName: '功能', description: '登录表单认证方式。', valueType: 'single-select', defaultValue: '账号密码+图形验证码', options: ['仅账号密码', '账号密码+图形验证码', '账号密码+短信验证码', '手机验证码（无密码）', 'Tab切换（多方式）'] },
+  { id: 'formStyle', name: '表单组件风格', groupName: '视觉', description: '输入控件视觉样式。', valueType: 'single-select', defaultValue: '线框风格', options: ['线框风格', '填充风格', '底部下划线'] },
+  { id: 'assist', name: '辅助功能组合', groupName: '功能', description: '记住账号与忘记密码。', valueType: 'single-select', defaultValue: '记住+忘记', options: ['无', '仅记住账号', '仅忘记密码', '记住+忘记'] },
+  { id: 'assistText', name: '辅助文案变体', groupName: '文案', description: '按辅助功能填写对应文案；同时启用时用分号分隔两项。', valueType: 'text', defaultValue: '记住账号；忘记密码？请联系管理员', options: [] },
+  { id: 'registerEntry', name: '注册入口', groupName: '功能', description: '是否生成注册入口和注册页面。', valueType: 'single-select', defaultValue: '无', options: ['无', '有入口+注册页面'] },
+  { id: 'loadingState', name: '加载状态', groupName: '交互', description: '提交时加载反馈。', valueType: 'single-select', defaultValue: '两者都有', options: ['按钮文字变化', '旋转菊花', '两者都有'] },
+  { id: 'errorMode', name: '错误提示方式', groupName: '交互', description: '登录错误反馈位置。', valueType: 'single-select', defaultValue: '输入框下方文字', options: ['弹窗提示', '输入框下方文字', '顶部横幅'] },
+  { id: 'policyFooter', name: '底部信息1', groupName: '内容', description: '登录框下方的隐私政策与服务协议，仅外部系统按需使用。', valueType: 'single-select', defaultValue: '无', options: ['无', '隐私政策+服务协议'] },
+  { id: 'copyrightFooter', name: '底部信息2', groupName: '内容', description: '整个登录页面最底端的版权信息。', valueType: 'single-select', defaultValue: '版权', options: ['无', '版权'] },
+  { id: 'decoration', name: '装饰元素', groupName: '视觉', description: '背景装饰效果。', valueType: 'single-select', defaultValue: '背景光晕', options: ['无', '背景光晕', '几何形状', '网格纹理'] },
+  { id: 'captchaMode', name: '验证码实现方式', groupName: '功能', description: '图形验证码在页面加载时自动生成，可使用随机字母或数字加减法。', valueType: 'single-select', defaultValue: '随机字母', options: ['随机字母', '数字加减法'] },
+  { id: 'demoAccount', name: '预填演示数据', groupName: '功能', description: '预填演示账号；如预填，密码统一为123456123456。', valueType: 'single-select', defaultValue: 'admin', options: ['admin', 'test', 'demo', 'usertest', 'companytest', 'devtest', 'autotest', '不预填'] },
+];
+
+export const seedLoginRequirements = [
+  ['LR1', '标题纯文字', '标题只能显示单一颜色的中文纯文字，不得包含Logo、图标、Emoji或英文；可位于登录页左上角或登录卡片最上方居中。'],
+  ['LR2', '禁止品牌标语', '禁止品牌宣传标语；维度要求欢迎语时，只能使用欢迎回来、欢迎登录等欢迎文案。'],
+  ['LR3', '禁止渐变', '背景、文字、登录卡片及其他区域禁止任何形式的渐变色。'],
+  ['LR4', '底部信息按需', '严格按固定维度生成。隐私政策和服务协议必须可点击并展示完整内容，位于登录卡片底部居中；版权位于整个页面最底端居中。'],
+  ['LR5', '登录方式按需', '必须严格按照登录方式固定维度生成对应表单与交互。'],
+  ['LR6', '辅助功能按需', '必须严格按照辅助功能固定维度生成记住账号和忘记密码。'],
+  ['LR7', '辅助文案可变化', '辅助文案必须使用固定维度给出的文字。'],
+  ['LR8', '注册入口按需', '有注册入口时必须同步生成完整注册页面或模态框，包含用户名、手机号、验证码、密码和确认密码。'],
+  ['LR9', '配色继承系统主色', '选择继承系统主色时，登录页配色必须与参考index.html主色一致。'],
+  ['LR10', '卡片质感适配', '卡片质感必须严格执行固定维度，并与参考首页明暗风格保持协调。'],
+  ['LR11', '无主题切换器', '登录页采用固定样式，不得提供运行时主题切换。'],
+  ['LR12', '背景图片通铺支持', '图片通铺必须使用background-size: cover；无上传图片时保留注释形式的示例图片链接。'],
+  ['LR13', '图形验证码动态生成', '使用图形验证码时，必须在页面加载时根据验证码实现方式动态随机生成，禁止固定验证码。'],
+  ['LR14', '长标题自然换行', '标题超过16个字时必须在语义完整的词组处自然换行，不得截断词语。'],
+  ['LR15', '密码可见性切换', '密码输入框必须带可点击的小眼睛，能够切换明文和密文。'],
+] as const;

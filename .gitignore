@@ -8,3 +8,8 @@ coverage/
 .DS_Store
 *.log
 ~$*
+data/
+backups/
+*.db
+*.db-shm
+*.db-wal

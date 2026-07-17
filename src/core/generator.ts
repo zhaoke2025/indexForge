@@ -547,6 +547,59 @@ function keepInitialContentBlank(html: string): string {
     .replace("loadPage(menuConfig[0]?.file || '');", "contentFrame.src = 'about:blank';");
 }
 
+const sidebarToggleIcons: Record<string, [string, string]> = {
+  菜单: ['fa-bars', 'fa-angle-double-right'],
+  双箭头: ['fa-angle-double-left', 'fa-angle-double-right'],
+  单箭头: ['fa-angle-left', 'fa-angle-right'],
+  面板折叠: ['fa-outdent', 'fa-indent'],
+};
+
+function applySidebarToggleDimensions(html: string, dimensions: DimensionConfig[] | undefined): string {
+  const position = getDimensionValue(dimensions, 'sidebarTogglePosition');
+  const iconStyle = getDimensionValue(dimensions, 'sidebarToggleIcon');
+  const [expandedIcon, collapsedIcon] = sidebarToggleIcons[typeof iconStyle === 'string' ? iconStyle : '菜单'] ?? sidebarToggleIcons.菜单;
+  const buttonPattern = /<button class="sidebar-toggle-btn" id="sidebarToggleBtn">[\s\S]*?<\/button>/;
+  const matchedButton = html.match(buttonPattern)?.[0];
+  if (!matchedButton) return html;
+
+  const button = matchedButton.replace(/class="fa [^"]+" id="toggleIcon"/, `class="fa ${expandedIcon}" id="toggleIcon"`);
+  let output = html.replace(buttonPattern, '');
+
+  if (position === '标题右侧') {
+    output = output.replace(/(<div class="header-left">[\s\S]*?<h1[^>]*>[\s\S]*?<\/h1>)/, `$1\n                ${button}`);
+  } else if (position === '侧边栏底部') {
+    output = output.replace(
+      '<div class="sidebar-menu-container" id="primaryMenuContainer"></div>',
+      `<div class="sidebar-menu-container" id="primaryMenuContainer"></div>\n                <div class="sidebar-toggle-bottom">${button}</div>`,
+    );
+    output = appendCss(output, `        .sidebar-toggle-bottom {
+            flex-shrink: 0;
+            display: flex;
+            justify-content: flex-end;
+            padding: 8px 12px;
+            border-top: 1px solid rgba(148, 163, 184, 0.22);
+        }
+        .sidebar-collapsed .sidebar-toggle-bottom {
+            justify-content: center;
+            padding-inline: 0;
+        }
+`);
+  } else if (position === '用户信息左侧') {
+    output = output.replace(/(<div class="user-menu(?:\s[^"]*)?">)/, `${button}\n            $1`);
+    if (!output.includes('id="sidebarToggleBtn"')) {
+      output = output.replace(/(<div class="header-left">[\s\S]*?<h1[^>]*>[\s\S]*?<\/h1>)/, `$1\n                ${button}`);
+    }
+  } else {
+    output = output.replace(/(<div class="header-left">)/, `$1\n                ${button}`);
+  }
+
+  return output
+    .replace(/toggleIcon\.classList\.remove\('fa-bars'\);/, `toggleIcon.classList.remove('${expandedIcon}');`)
+    .replace(/toggleIcon\.classList\.add\('fa-angle-double-right'\);/, `toggleIcon.classList.add('${collapsedIcon}');`)
+    .replace(/toggleIcon\.classList\.remove\('fa-angle-double-right'\);/, `toggleIcon.classList.remove('${collapsedIcon}');`)
+    .replace(/toggleIcon\.classList\.add\('fa-bars'\);/, `toggleIcon.classList.add('${expandedIcon}');`);
+}
+
 function applyStructuralDimensions(html: string, dimensions: DimensionConfig[] | undefined, version: string): string {
   let output = html;
   const sidebarFooter = getDimensionValue(dimensions, 'sidebarFooter');
@@ -572,7 +625,7 @@ function applyStructuralDimensions(html: string, dimensions: DimensionConfig[] |
         }
 `);
   }
-  return output;
+  return applySidebarToggleDimensions(output, dimensions);
 }
 
 export function generateIndexHtml(templateHtml: string, options: GenerateOptions): GenerateResult {

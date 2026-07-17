@@ -25,6 +25,21 @@ docker compose up -d --build
 docker compose ps
 ```
 
+首次部署前创建SQLite持久化目录，并确保容器用户可写：
+
+```bash
+mkdir -p data backups
+sudo chown -R 1000:1000 data backups
+```
+
+实体维度、硬性要求、母版和生成记录保存在 `data/indexforge.db`。重建容器不会删除该目录。
+
+备份数据库：
+
+```bash
+cp data/indexforge.db backups/indexforge-$(date +%F-%H%M%S).db
+```
+
 应用默认监听服务器的 `8787` 端口，前端和 API 使用同一域名。建议只在防火墙中开放 80/443，由 Nginx 或云负载均衡反向代理到 `127.0.0.1:8787`。
 
 ## Nginx 示例

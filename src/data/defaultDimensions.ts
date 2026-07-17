@@ -6,6 +6,8 @@ export type DimensionConfig = {
   description: string;
   value: string | boolean;
   options?: string[];
+  valueType?: 'text' | 'boolean' | 'single-select';
+  sortOrder?: number;
 };
 
 export const defaultDimensions: DimensionConfig[] = [
@@ -19,6 +21,8 @@ export const defaultDimensions: DimensionConfig[] = [
   { id: 'headerHeight', name: '顶栏高度与元素', group: '布局结构层', enabled: true, description: '顶栏高度和信息密度。', value: '60px', options: ['48px', '56px', '60px', '64px'] },
   { id: 'contentBg', name: '内容区背景材质', group: '布局结构层', enabled: true, description: 'iframe 外层背景效果。', value: '跟随预设', options: ['跟随预设', '纯色', '深色', '浅灰'] },
   { id: 'sidebarToggle', name: '侧边栏折叠控制', group: '布局结构层', enabled: true, description: '保留顶部折叠按钮。', value: true },
+  { id: 'sidebarTogglePosition', name: '侧边栏折叠按钮位置', group: '布局结构层', enabled: true, description: '折叠按钮可放在标题左侧、标题右侧、侧边栏底部或用户信息左侧。', value: '标题左侧', options: ['标题左侧', '标题右侧', '侧边栏底部', '用户信息左侧'] },
+  { id: 'sidebarToggleIcon', name: '侧边栏折叠图标', group: '信息装饰层', enabled: true, description: '选择折叠按钮展开和收起时使用的图标样式。', value: '菜单', options: ['菜单', '双箭头', '单箭头', '面板折叠'] },
   { id: 'activeMenu', name: '菜单激活态样式', group: '交互反馈层', enabled: true, description: '一级菜单和子菜单选中样式。', value: '背景色块', options: ['背景色块', '左边框', '仅文字'] },
   { id: 'submenuTrigger', name: '子菜单展开触发器', group: '交互反馈层', enabled: true, description: '一级菜单右侧是否显示层级提示。', value: '无', options: ['无', '箭头', '加号'] },
   { id: 'submenuAnimation', name: '子菜单展开动画', group: '交互反馈层', enabled: true, description: '子菜单展开和收起速度。', value: '标准', options: ['无', '快速', '标准', '柔和'] },

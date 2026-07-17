@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>企业运营管理平台</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: '#2563EB',
+                        sidebar: '#0F172A'
+                    }
+                }
+            }
+        };
+    </script>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            overflow: hidden;
+            font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+            color: #0F172A;
+            background: #F1F5F9;
+        }
+
+        button {
+            font: inherit;
+        }
+
+        .app-container {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            height: 100vh;
+        }
+
+        .app-header {
+            z-index: 20;
+            display: flex;
+            flex-shrink: 0;
+            align-items: center;
+            justify-content: space-between;
+            height: 64px;
+            padding: 0 24px;
+            border-bottom: 1px solid #E2E8F0;
+            background: #FFFFFF;
+            box-shadow: 0 2px 10px rgba(15, 23, 42, 0.05);
+        }
+
+        .header-left,
+        .user-menu {
+            display: flex;
+            align-items: center;
+        }
+
+        .header-left {
+            gap: 14px;
+        }
+
+        .app-header h1 {
+            margin: 0;
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: 0.2px;
+        }
+
+        .sidebar-toggle-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 36px;
+            height: 36px;
+            padding: 0;
+            border: 1px solid #E2E8F0;
+            border-radius: 8px;
+            color: #475569;
+            background: #FFFFFF;
+            cursor: pointer;
+            transition: 0.2s ease;
+        }
+
+        .sidebar-toggle-btn:hover {
+            color: #2563EB;
+            border-color: #BFDBFE;
+            background: #EFF6FF;
+        }
+
+        .user-menu {
+            gap: 10px;
+            color: #334155;
+        }
+
+        .avatar-circle {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 34px;
+            height: 34px;
+            border-radius: 8px;
+            color: #FFFFFF;
+            background: #2563EB;
+        }
+
+        .user-meta {
+            line-height: 1.25;
+        }
+
+        .user-name {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .user-role {
+            display: block;
+            margin-top: 2px;
+            font-size: 11px;
+            color: #94A3B8;
+        }
+
+        .app-main {
+            display: flex;
+            min-height: 0;
+            flex: 1;
+        }
+
+        .app-sidebar {
+            position: relative;
+            display: flex;
+            flex-shrink: 0;
+            flex-direction: column;
+            width: 260px;
+            overflow: hidden;
+            color: #CBD5E1;
+            background: #0F172A;
+            transition: width 0.25s ease;
+        }
+
+        .app-sidebar.sidebar-collapsed {
+            width: 72px;
+        }
+
+        .sidebar-brand {
+            flex-shrink: 0;
+            padding: 20px 18px 14px;
+            color: #64748B;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 1.2px;
+        }
+
+        .sidebar-menu-container {
+            flex: 1;
+            overflow-x: hidden;
+            overflow-y: auto;
+            padding: 4px 10px 16px;
+        }
+
+        .nav-primary-item,
+        .submenu-item {
+            display: flex;
+            align-items: center;
+            width: 100%;
+            border: 0;
+            cursor: pointer;
+            transition: 0.2s ease;
+        }
+
+        .nav-primary-item {
+            gap: 12px;
+            min-height: 44px;
+            margin: 3px 0;
+            padding: 10px 14px;
+            border-radius: 8px;
+            color: #CBD5E1;
+            background: transparent;
+        }
+
+        .nav-primary-item i {
+            width: 20px;
+            flex-shrink: 0;
+            text-align: center;
+            font-size: 16px;
+        }
+
+        .nav-primary-item:hover {
+            color: #FFFFFF;
+            background: #1E293B;
+        }
+
+        .nav-primary-active {
+            color: #FFFFFF;
+            background: #2563EB;
+            box-shadow: 0 6px 16px rgba(37, 99, 235, 0.25);
+        }
+
+        .dynamic-submenu-wrapper {
+            margin: 2px 0 6px;
+            overflow: hidden;
+        }
+
+        .submenu-item {
+            min-height: 38px;
+            padding: 9px 14px 9px 50px;
+            border-radius: 7px;
+            color: #94A3B8;
+            font-size: 13px;
+        }
+
+        .submenu-item:hover {
+            color: #FFFFFF;
+            background: #1E293B;
+        }
+
+        .submenu-active {
+            color: #93C5FD;
+            background: rgba(37, 99, 235, 0.14);
+            font-weight: 600;
+        }
+
+        .sidebar-footer {
+            flex-shrink: 0;
+            padding: 14px 18px;
+            border-top: 1px solid #1E293B;
+            color: #64748B;
+            font-size: 11px;
+            white-space: nowrap;
+        }
+
+        .sidebar-collapsed .sidebar-brand,
+        .sidebar-collapsed .nav-primary-item span,
+        .sidebar-collapsed .dynamic-submenu-wrapper,
+        .sidebar-collapsed .sidebar-footer {
+            display: none;
+        }
+
+        .sidebar-collapsed .sidebar-menu-container {
+            padding: 8px;
+        }
+
+        .sidebar-collapsed .nav-primary-item {
+            justify-content: center;
+            padding: 10px 0;
+        }
+
+        .app-content {
+            min-width: 0;
+            flex: 1;
+            padding: 18px;
+            background: #F1F5F9;
+        }
+
+        #contentFrame {
+            width: 100%;
+            height: 100%;
+            border: 0;
+            border-radius: 10px;
+            background: #FFFFFF;
+            box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08);
+        }
+
+        @media (max-width: 760px) {
+            .app-header {
+                padding: 0 14px;
+            }
+
+            .user-meta {
+                display: none;
+            }
+
+            .app-sidebar {
+                width: 220px;
+            }
+
+            .app-content {
+                padding: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <header class="app-header">
+            <div class="header-left">
+                <button class="sidebar-toggle-btn" id="sidebarToggleBtn" type="button" aria-label="折叠侧边栏">
+                    <i class="fa fa-bars" id="toggleIcon"></i>
+                </button>
+                <h1>企业运营管理平台</h1>
+            </div>
+            <div class="user-menu">
+                <div class="avatar-circle"><i class="fa fa-user-o"></i></div>
+                <div class="user-meta">
+                    <span class="user-name">系统管理员</span>
+                    <span class="user-role">管理员</span>
+                </div>
+                <i class="fa fa-angle-down text-slate-400"></i>
+            </div>
+        </header>
+
+        <main class="app-main">
+            <aside class="app-sidebar" id="appSidebar">
+                <div class="sidebar-brand">BUSINESS CONSOLE</div>
+                <div class="sidebar-menu-container" id="primaryMenuContainer"></div>
+                <div class="sidebar-footer">版本 V1.0</div>
+            </aside>
+            <section class="app-content" id="rightContent">
+                <iframe id="contentFrame" title="业务内容区" sandbox="allow-same-origin allow-scripts allow-forms allow-modals allow-popups"></iframe>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        const menuConfig = [
+            {
+                id: 'dashboard',
+                name: '工作台',
+                icon: 'fa-dashboard',
+                file: 'dashboard',
+                subMenu: []
+            },
+            {
+                id: 'business',
+                name: '业务管理',
+                icon: 'fa-briefcase',
+                subMenu: [
+                    { name: '业务列表', file: 'business-list' },
+                    { name: '业务审核', file: 'business-review' },
+                    { name: '业务归档', file: 'business-archive' }
+                ]
+            },
+            {
+                id: 'data-center',
+                name: '数据中心',
+                icon: 'fa-bar-chart',
+                subMenu: [
+                    { name: '统计分析', file: 'statistics' },
+                    { name: '数据报表', file: 'reports' }
+                ]
+            },
+            {
+                id: 'system',
+                name: '系统设置',
+                icon: 'fa-cog',
+                subMenu: [
+                    { name: '用户管理', file: 'users' },
+                    { name: '角色权限', file: 'roles' }
+                ]
+            }
+        ];
+
+        let activePrimaryId = 'dashboard';
+        let activeSubMenuName = '';
+        const sidebar = document.getElementById('appSidebar');
+        const toggleBtn = document.getElementById('sidebarToggleBtn');
+        const toggleIcon = document.getElementById('toggleIcon');
+        const primaryContainer = document.getElementById('primaryMenuContainer');
+        const contentFrame = document.getElementById('contentFrame');
+
+        function setSidebarCollapsed(collapsed) {
+            sidebar.classList.toggle('sidebar-collapsed', collapsed);
+            toggleIcon.classList.toggle('fa-bars', !collapsed);
+            toggleIcon.classList.toggle('fa-angle-double-right', collapsed);
+        }
+
+        function toggleSidebar() {
+            setSidebarCollapsed(!sidebar.classList.contains('sidebar-collapsed'));
+            window.dispatchEvent(new Event('resize'));
+        }
+
+        function getMenu(id) {
+            return menuConfig.find(menu => menu.id === id);
+        }
+
+        function renderPrimaryMenu() {
+            primaryContainer.innerHTML = '';
+            menuConfig.forEach(menu => {
+                const item = document.createElement('button');
+                item.type = 'button';
+                item.className = `nav-primary-item ${activePrimaryId === menu.id ? 'nav-primary-active' : ''}`;
+                item.dataset.menuId = menu.id;
+                item.innerHTML = `<i class="fa ${menu.icon}"></i><span>${menu.name}</span>`;
+                item.addEventListener('click', () => onPrimaryMenuClick(menu));
+                primaryContainer.appendChild(item);
+                if (activePrimaryId === menu.id && menu.subMenu.length) renderSubMenuInPlace();
+            });
+        }
+
+        function removeExistingSubMenu() {
+            document.querySelectorAll('.dynamic-submenu-wrapper').forEach(element => element.remove());
+        }
+
+        function renderSubMenuInPlace() {
+            removeExistingSubMenu();
+            const activeMenu = getMenu(activePrimaryId);
+            if (!activeMenu || !activeMenu.subMenu.length) return;
+            const activeElement = primaryContainer.querySelector(`[data-menu-id="${activePrimaryId}"]`);
+            if (!activeElement) return;
+
+            const wrapper = document.createElement('div');
+            wrapper.className = 'dynamic-submenu-wrapper';
+            activeMenu.subMenu.forEach(sub => {
+                const item = document.createElement('button');
+                item.type = 'button';
+                item.className = `submenu-item ${activeSubMenuName === sub.name ? 'submenu-active' : ''}`;
+                item.textContent = sub.name;
+                item.addEventListener('click', event => {
+                    event.stopPropagation();
+                    navigateToSub(sub);
+                });
+                wrapper.appendChild(item);
+            });
+            activeElement.insertAdjacentElement('afterend', wrapper);
+        }
+
+        function onPrimaryMenuClick(menu) {
+            activePrimaryId = menu.id;
+            if (menu.subMenu.length) {
+                activeSubMenuName = menu.subMenu[0].name;
+                renderPrimaryMenu();
+                loadPage(menu.subMenu[0].file);
+                return;
+            }
+            activeSubMenuName = '';
+            renderPrimaryMenu();
+            loadPage(menu.file);
+        }
+
+        function navigateToSub(sub) {
+            activeSubMenuName = sub.name;
+            renderPrimaryMenu();
+            loadPage(sub.file);
+        }
+
+        function loadPage(file) {
+            contentFrame.src = file ? `./${file}.html` : 'about:blank';
+        }
+
+        function findTarget(targetName) {
+            for (const menu of menuConfig) {
+                if (menu.id === targetName || menu.name === targetName || menu.file === targetName) return { menu };
+                const sub = menu.subMenu.find(item => item.name === targetName || item.file === targetName);
+                if (sub) return { menu, sub };
+            }
+            return null;
+        }
+
+        window.navigateTo = function(targetName, params = {}) {
+            const target = findTarget(targetName);
+            if (!target) return;
+            activePrimaryId = target.menu.id;
+            activeSubMenuName = target.sub ? target.sub.name : '';
+            renderPrimaryMenu();
+            const file = target.sub ? target.sub.file : target.menu.file;
+            if (!file) return;
+            const query = new URLSearchParams(params).toString();
+            contentFrame.src = `./${file}.html${query ? `?${query}` : ''}`;
+        };
+
+        window.addEventListener('message', function(event) {
+            if (event.data && event.data.action === 'navigateTo' && event.data.subName) {
+                window.navigateTo(event.data.subName, event.data.params || {});
+            }
+        });
+
+        toggleBtn.addEventListener('click', toggleSidebar);
+        setSidebarCollapsed(false);
+        renderPrimaryMenu();
+        contentFrame.src = 'about:blank';
+    </script>
+</body>
+</html>

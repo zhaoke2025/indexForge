@@ -1,204 +1,70 @@
+import { ArrowDown, ArrowUp, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { api } from '../core/api';
 import type { DimensionConfig } from '../data/defaultDimensions';
-import { defaultDimensions } from '../data/defaultDimensions';
 
-type Props = {
-  dimensions: DimensionConfig[];
-  onChange: (dimensions: DimensionConfig[]) => void;
-};
+type Props = { dimensions: DimensionConfig[]; onReload: () => Promise<void>; scope?: 'index' | 'login' };
+const empty: DimensionConfig = { id: '', name: '', group: '自定义', description: '', valueType: 'text', value: '', options: [], enabled: true };
+const isColorDimension = (dimension: DimensionConfig) => dimension.id === 'primary' || /^#[0-9A-Fa-f]{6}$/.test(String(dimension.value));
+const normalizeHexColor = (value: string) => /^#[0-9A-Fa-f]{6}$/.test(value) ? value.toUpperCase() : value;
 
-const colorSwatches = [
-  '#2563EB',
-  '#16A34A',
-  '#0891B2',
-  '#7C3AED',
-  '#DB2777',
-  '#DC2626',
-  '#EA580C',
-  '#D4AF37',
-  '#111827',
-  '#64748B',
-];
+export default function DimensionConfigPage({ dimensions, onReload, scope = 'index' }: Props) {
+  const [editing, setEditing] = useState<DimensionConfig | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [notice, setNotice] = useState('');
+  const [formError, setFormError] = useState('');
 
-const customOption = '自定义';
-const customPrefix = '自定义:';
+  useEffect(() => {
+    if (!editing) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setEditing(null);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [editing]);
 
-const customDefaults: Record<string, string> = {
-  mode: '#F8FAFC #FFFFFF #0F172A #64748B',
-  radius: '10px',
-  shadow: '0 12px 28px rgba(15, 23, 42, 0.16)',
-  sidebarWidth: '260px',
-  sidebarScroll: 'auto',
-  headerHeight: '60px',
-  contentBg: '#F1F5F9',
-  activeMenu: 'background:#E0E7FF;color:#2563EB',
-  submenuTrigger: '›',
-  submenuAnimation: 'all 0.25s ease',
-  iframeLoading: '#111827',
-  menuIcons: 'FontAwesome',
-  menuBadge: 'NEW',
-  userInfo: '头像+姓名+角色+下拉',
-  menuOrder: '默认',
-  spacing: '20px 24px',
-  borderStyle: '1px solid #CBD5E1',
-  scrollbar: '6px #94A3B8 transparent',
-  transitionSpeed: '0.2s ease',
-  contentMaxWidth: '1280px',
-};
-
-const customPlaceholders: Record<string, string> = {
-  mode: '例如：#F8FAFC #FFFFFF #0F172A #64748B',
-  radius: '例如：10px / 9999px',
-  shadow: '例如：0 12px 28px rgba(15, 23, 42, 0.16)',
-  sidebarWidth: '例如：300px',
-  sidebarScroll: '例如：auto / visible',
-  headerHeight: '例如：64px',
-  contentBg: '例如：#F1F5F9 / linear-gradient(...)',
-  activeMenu: '例如：background:#E0E7FF;color:#2563EB',
-  submenuTrigger: '例如：› / + / ↓',
-  submenuAnimation: '例如：all 0.25s ease',
-  iframeLoading: '例如：#111827',
-  menuIcons: '例如：FontAwesome / hidden',
-  menuBadge: '例如：NEW / Beta / 3',
-  userInfo: '例如：头像+姓名+角色+下拉',
-  menuOrder: '例如：默认',
-  spacing: '例如：20px 24px',
-  borderStyle: '例如：2px dashed #CBD5E1',
-  scrollbar: '例如：6px #94A3B8 transparent',
-  transitionSpeed: '例如：0.2s ease / 75ms linear',
-  contentMaxWidth: '例如：1280px / 960px',
-};
-
-function isHexColor(value: unknown): value is string {
-  return typeof value === 'string' && /^#[0-9A-Fa-f]{6}$/.test(value);
-}
-
-function isCustomValue(value: DimensionConfig['value']) {
-  return typeof value === 'string' && value.startsWith(customPrefix);
-}
-
-function stripCustomPrefix(value: DimensionConfig['value']) {
-  return typeof value === 'string' && value.startsWith(customPrefix) ? value.slice(customPrefix.length) : String(value);
-}
-
-function getOptions(item: DimensionConfig) {
-  if (!item.options) return [];
-  return item.options.includes(customOption) ? item.options : [...item.options, customOption];
-}
-
-function getSelectValue(item: DimensionConfig) {
-  if (!item.options) return String(item.value);
-  const options = getOptions(item);
-  return options.includes(String(item.value)) ? String(item.value) : isCustomValue(item.value) ? customOption : String(item.value);
-}
-
-export default function DimensionConfigPage({ dimensions, onChange }: Props) {
-  const groups = Array.from(new Set(dimensions.map((item) => item.group)));
-
-  const update = (id: string, patch: Partial<DimensionConfig>) => {
-    onChange(dimensions.map((item) => (item.id === id ? { ...item, ...patch } : item)));
+  const save = async () => {
+    if (!editing) return;
+    try { await (scope === 'login' ? api.saveLoginDimension(editing, creating) : api.saveDimension(editing, creating)); setEditing(null); setFormError(''); await onReload(); setNotice('维度已保存'); }
+    catch (error) { setFormError(error instanceof Error ? error.message : '保存失败'); }
   };
+  const remove = async (id: string) => { if (!window.confirm('确定删除这个维度吗？')) return; await (scope === 'login' ? api.deleteLoginDimension(id) : api.deleteDimension(id)); await onReload(); };
+  const move = async (index: number, offset: number) => { const next = [...dimensions]; const target = index + offset; if (target < 0 || target >= next.length) return; [next[index], next[target]] = [next[target], next[index]]; await (scope === 'login' ? api.reorderLoginDimensions(next.map((item) => item.id)) : api.reorderDimensions(next.map((item) => item.id))); await onReload(); };
+  const toggle = async (item: DimensionConfig) => { await (scope === 'login' ? api.saveLoginDimension({ ...item, enabled: !item.enabled }, false) : api.saveDimension({ ...item, enabled: !item.enabled }, false)); await onReload(); };
 
-  return (
-    <div className="space-y-5 p-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-base font-semibold text-slate-900">25 个维度逐项编辑</h2>
-          <p className="text-sm text-slate-500">开启的维度会在生成时覆盖风格预设，部分维度支持自定义 CSS 值。</p>
-        </div>
-        <button className="secondary-button" onClick={() => onChange(defaultDimensions)} type="button">
-          恢复默认
-        </button>
-      </div>
-
-      {groups.map((group) => (
-        <section key={group} className="rounded border border-slate-200 bg-white">
-          <div className="border-b border-slate-200 px-4 py-3 text-sm font-semibold">{group}</div>
-          <div className="grid grid-cols-2 gap-3 p-4">
-            {dimensions
-              .filter((item) => item.group === group)
-              .map((item) => (
-                <div key={item.id} className="rounded border border-slate-200 p-3">
-                  <div className="mb-2 flex items-start justify-between gap-3">
-                    <div>
-                      <div className="text-sm font-medium text-slate-900">{item.name}</div>
-                      <div className="mt-1 text-xs leading-5 text-slate-500">{item.description}</div>
-                    </div>
-                    <input
-                      checked={item.enabled}
-                      className="mt-1 h-4 w-4"
-                      onChange={(event) => update(item.id, { enabled: event.target.checked })}
-                      type="checkbox"
-                    />
-                  </div>
-                  {item.id === 'primary' ? (
-                    <div className="space-y-3">
-                      <div className="grid grid-cols-[44px_minmax(0,1fr)] gap-2">
-                        <input
-                          aria-label="选择主色"
-                          className="h-9 w-11 cursor-pointer rounded border border-slate-300 bg-white p-1"
-                          onChange={(event) => update(item.id, { value: event.target.value.toUpperCase() })}
-                          type="color"
-                          value={isHexColor(item.value) ? item.value : '#2563EB'}
-                        />
-                        <input
-                          className="text-input"
-                          onChange={(event) => update(item.id, { value: event.target.value })}
-                          placeholder="#2563EB"
-                          value={String(item.value)}
-                        />
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {colorSwatches.map((color) => (
-                          <button
-                            aria-label={`使用颜色 ${color}`}
-                            className={`h-6 w-6 rounded border shadow-sm ${item.value === color ? 'ring-2 ring-blue-500 ring-offset-1' : 'border-white'}`}
-                            key={color}
-                            onClick={() => update(item.id, { value: color })}
-                            style={{ backgroundColor: color }}
-                            type="button"
-                            title={color}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  ) : typeof item.value === 'boolean' ? (
-                    <label className="flex items-center gap-2 text-sm text-slate-700">
-                      <input checked={item.value} onChange={(event) => update(item.id, { value: event.target.checked })} type="checkbox" />
-                      启用
-                    </label>
-                  ) : item.options ? (
-                    <div className="space-y-2">
-                      <select
-                        className="text-input"
-                        value={getSelectValue(item)}
-                        onChange={(event) => {
-                          const nextValue = event.target.value === customOption ? `${customPrefix}${customDefaults[item.id] || String(item.value)}` : event.target.value;
-                          update(item.id, { value: nextValue });
-                        }}
-                      >
-                        {getOptions(item).map((option) => (
-                          <option key={option} value={option}>
-                            {option}
-                          </option>
-                        ))}
-                      </select>
-                      {getSelectValue(item) === customOption ? (
-                        <input
-                          className="text-input"
-                          onChange={(event) => update(item.id, { value: `${customPrefix}${event.target.value}` })}
-                          placeholder={customPlaceholders[item.id] || '请输入自定义值'}
-                          value={stripCustomPrefix(item.value)}
-                        />
-                      ) : null}
-                    </div>
-                  ) : (
-                    <input className="text-input" value={item.value} onChange={(event) => update(item.id, { value: event.target.value })} />
-                  )}
-                </div>
-              ))}
-          </div>
-        </section>
-      ))}
+  return <div className="space-y-4 p-5">
+    <div className="flex items-center justify-between">
+      <div><h2 className="text-base font-semibold">{scope === 'login' ? '登录页变体维度管理' : '实体维度管理'}</h2><p className="text-sm text-slate-500">所有启用维度会自动参与下一次AI生成。</p></div>
+      <div className="flex gap-2"><button className="secondary-button" onClick={async () => { if (confirm('确定恢复全部默认维度吗？')) { await (scope === 'login' ? api.resetLoginDimensions() : api.resetDimensions()); await onReload(); } }} type="button">恢复默认</button><button className="primary-button" onClick={() => { setCreating(true); setFormError(''); setEditing({ ...empty }); }} type="button"><Plus size={16} />新增维度</button></div>
     </div>
-  );
+    {notice && <div className="rounded bg-blue-50 px-3 py-2 text-sm text-blue-700">{notice}</div>}
+    {editing && <div aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-5" onMouseDown={(event) => { if (event.target === event.currentTarget) setEditing(null); }} role="dialog">
+      <section className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-lg bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+          <div><h3 className="font-semibold">{creating ? '新增维度' : `编辑维度：${editing.name}`}</h3><p className="mt-1 text-xs text-slate-500">配置维度名称、类型、默认值和可选项。</p></div>
+          <button aria-label="关闭" className="rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700" onClick={() => setEditing(null)} type="button"><X size={18} /></button>
+        </div>
+        <div className="grid grid-cols-1 gap-4 p-5 md:grid-cols-2">
+          {formError && <div className="rounded bg-red-50 px-3 py-2 text-sm text-red-700 md:col-span-2">{formError}</div>}
+          <label><span className="control-label">ID</span><input autoFocus className="text-input" disabled={!creating} value={editing.id} onChange={(e) => setEditing({ ...editing, id: e.target.value })} /></label>
+          <label><span className="control-label">名称</span><input className="text-input" value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} /></label>
+          <label><span className="control-label">分组</span><input className="text-input" value={editing.group} onChange={(e) => setEditing({ ...editing, group: e.target.value })} /></label>
+          <label><span className="control-label">值类型</span><select className="text-input" value={editing.valueType || 'text'} onChange={(e) => setEditing({ ...editing, valueType: e.target.value as DimensionConfig['valueType'] })}><option value="text">文本</option><option value="boolean">布尔</option><option value="single-select">单选</option></select></label>
+          <label><span className="control-label">默认值</span>{editing.valueType === 'boolean' ? <select className="text-input" value={String(editing.value)} onChange={(e) => setEditing({ ...editing, value: e.target.value === 'true' })}><option value="true">是</option><option value="false">否</option></select> : editing.valueType === 'single-select' ? <select className="text-input" value={String(editing.value)} onChange={(e) => setEditing({ ...editing, value: e.target.value })}>{(editing.options || []).map((option) => <option key={option} value={option}>{option}</option>)}</select> : isColorDimension(editing) ? <div className="flex gap-2"><input aria-label="选择颜色" className="h-9 w-12 shrink-0 cursor-pointer rounded border border-slate-300 bg-white p-1" type="color" value={/^#[0-9A-Fa-f]{6}$/.test(String(editing.value)) ? String(editing.value) : '#2563EB'} onChange={(e) => setEditing({ ...editing, value: e.target.value.toUpperCase() })} /><input className="text-input" placeholder="#2563EB" value={String(editing.value)} onChange={(e) => setEditing({ ...editing, value: normalizeHexColor(e.target.value) })} /></div> : <input className="text-input" value={String(editing.value)} onChange={(e) => setEditing({ ...editing, value: e.target.value })} />}</label>
+          <label><span className="control-label">选项（逗号分隔）</span><input className="text-input" disabled={editing.valueType !== 'single-select'} placeholder={editing.valueType === 'single-select' ? '选项一,选项二' : '仅单选类型需要填写'} value={(editing.options || []).join(',')} onChange={(e) => setEditing({ ...editing, options: e.target.value.split(',').map((v) => v.trim()).filter(Boolean) })} /></label>
+          <label className="md:col-span-2"><span className="control-label">描述</span><textarea className="min-h-24 w-full rounded border border-slate-300 p-3 text-sm" value={editing.description} onChange={(e) => setEditing({ ...editing, description: e.target.value })} /></label>
+        </div>
+        <div className="flex justify-end gap-2 border-t border-slate-200 px-5 py-4"><button className="secondary-button" onClick={() => setEditing(null)} type="button">取消</button><button className="primary-button" onClick={save} type="button">保存</button></div>
+      </section>
+    </div>}
+    <div className="overflow-hidden rounded border border-slate-200 bg-white">
+      <table className="w-full text-left text-sm"><thead className="bg-slate-50 text-slate-500"><tr><th className="px-3 py-3">顺序</th><th>名称</th><th>分组</th><th>描述</th><th>默认值</th><th>状态</th><th>操作</th></tr></thead>
+      <tbody>{dimensions.map((item, index) => <tr className="border-t border-slate-200" key={item.id}>
+        <td className="px-3 py-3"><div className="flex items-center gap-1"><span className="w-5 text-xs text-slate-400">{index + 1}</span><button disabled={index === 0} className="disabled:opacity-25" onClick={() => move(index, -1)} type="button"><ArrowUp size={15} /></button><button disabled={index === dimensions.length - 1} className="disabled:opacity-25" onClick={() => move(index, 1)} type="button"><ArrowDown size={15} /></button></div></td>
+        <td className="font-medium">{item.name}<div className="text-xs text-slate-400">{item.id}</div></td><td>{item.group}</td><td className="max-w-xs text-slate-600">{item.description}</td><td>{String(item.value)}</td>
+        <td><button className={`rounded px-2 py-1 text-xs ${item.enabled ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`} onClick={() => toggle(item)} type="button">{item.enabled ? '启用' : '停用'}</button></td>
+        <td><div className="flex gap-2"><button className="secondary-button" onClick={() => { setCreating(false); setFormError(''); setEditing({ ...item }); }} type="button"><Pencil size={14} />编辑</button><button className="secondary-button text-red-600" onClick={() => remove(item.id)} type="button"><Trash2 size={14} />删除</button></div></td>
+      </tr>)}</tbody></table>
+    </div>
+  </div>;
 }
