@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { applyFunctionalDimensions } from './html-features.js';
+import { applyFunctionalDimensions, ensureReferencedElementAliases } from './html-features.js';
 import { validateHtml } from './html-validator.js';
 
 function hasClassElement(html: string, className: string) {
@@ -36,9 +36,9 @@ describe('functional HTML dimensions', () => {
   it('fully replaces an AI dropdown containing nested divider elements', () => {
     const aiDropdown = `<button class="user-menu-arrow" id="userDropdownTrigger"><i class="fa fa-angle-down"></i></button>
       <div class="user-dropdown" id="userDropdown">
-        <button class="user-dropdown-item">修改密码</button>
+        <button class="user-dropdown-item" id="modifyPwdItem">修改密码</button>
         <div class="user-dropdown-divider"></div>
-        <button class="user-dropdown-item">退出登录</button>
+        <button class="user-dropdown-item" id="logoutItem">退出登录</button>
       </div>`;
     const source = template.replace('<i class="fa fa-angle-down text-slate-400"></i>', aiDropdown);
     const html = applyFunctionalDimensions(source, dropdownDimension, template);
@@ -48,7 +48,24 @@ describe('functional HTML dimensions', () => {
     expect(hasClassElement(html, 'user-dropdown-divider')).toBe(false);
     expect(html).toContain('id="userDropdownTrigger" type="button" hidden');
     expect(html).toContain('id="userDropdown" type="button" hidden');
+    expect(html).toContain('id="modifyPwdItem" type="button" hidden');
+    expect(html).toContain('id="logoutItem" type="button" hidden');
+    expect(html.indexOf('id="logoutItem" type="button" hidden')).toBeLessThan(html.indexOf('document.getElementById'));
     expect(validateHtml(html, { dimensions: dropdownDimension }).valid).toBe(true);
+  });
+
+  it('repairs legacy records whose aliases were appended after the main script', () => {
+    const html = `<body><div id="userMenuTrigger"></div><script>
+      document.getElementById('userMenuTrigger').addEventListener('click', () => {});
+      document.getElementById('modifyPwdItem').addEventListener('click', () => {});
+      document.getElementById('logoutItem').addEventListener('click', () => {});
+      document.getElementById('userDropdown').classList.remove('show');
+    </script><button id="userDropdown" type="button" hidden></button></body>`;
+    const repaired = ensureReferencedElementAliases(html);
+    expect(repaired.indexOf('id="userDropdown" type="button" hidden')).toBeLessThan(repaired.indexOf('<script>'));
+    expect(repaired.indexOf('id="modifyPwdItem" type="button" hidden')).toBeLessThan(repaired.indexOf('<script>'));
+    expect(repaired.indexOf('id="logoutItem" type="button" hidden')).toBeLessThan(repaired.indexOf('<script>'));
+    expect(repaired.match(/id="userDropdown"/g)).toHaveLength(1);
   });
 
   it('places the dropdown trigger after the avatar and user information', () => {

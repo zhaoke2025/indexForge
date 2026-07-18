@@ -4,6 +4,10 @@ function injectBefore(html: string, marker: string, content: string) {
   return html.includes(marker) ? html.replace(marker, `${content}\n${marker}`) : html;
 }
 
+function injectAfterBody(html: string, content: string) {
+  return html.replace(/<body\b[^>]*>/i, (body) => `${body}\n${content}`);
+}
+
 function hasClassElement(html: string, className: string) {
   return new RegExp(`<[^>]+class=["'][^"']*\\b${className}\\b[^"']*["'][^>]*>`, 'i').test(html);
 }
@@ -97,11 +101,27 @@ function legacyUserDropdownIds(html: string) {
   for (const className of ['user-menu-trigger', 'user-menu-arrow', 'user-dropdown']) {
     const bounds = findElementByClass(html, className);
     if (!bounds) continue;
-    const opening = html.slice(bounds.start, html.indexOf('>', bounds.start) + 1);
-    const id = /\bid=(["'])([^"']+)\1/i.exec(opening)?.[2];
-    if (id && !id.startsWith('indexForge')) ids.add(id);
+    const element = html.slice(bounds.start, bounds.end);
+    for (const match of element.matchAll(/\bid=(["'])([^"']+)\1/gi)) {
+      if (!match[2].startsWith('indexForge')) ids.add(match[2]);
+    }
   }
   return [...ids];
+}
+
+export function ensureReferencedElementAliases(html: string) {
+  const aliasIds = new Set<string>();
+  const withoutAliases = html.replace(/<button\s+id=(["'])([A-Za-z][\w:.-]*)\1\s+type=(["'])button\3\s+hidden><\/button>\s*/gi, (_element, _quote, id: string) => {
+    aliasIds.add(id);
+    return '';
+  });
+  const existingIds = new Set([...withoutAliases.matchAll(/\bid=(["'])([A-Za-z][\w:.-]*)\1/gi)].map((match) => match[2]));
+  for (const match of withoutAliases.matchAll(/document\.getElementById\(\s*(["'])([A-Za-z][\w:.-]*)\1\s*\)/gi)) {
+    if (!existingIds.has(match[2])) aliasIds.add(match[2]);
+  }
+  if (!aliasIds.size) return withoutAliases;
+  const aliases = [...aliasIds].map((id) => `<button id="${id}" type="button" hidden></button>`).join('');
+  return injectAfterBody(withoutAliases, aliases);
 }
 
 export function applyFunctionalDimensions(html: string, dimensions: FeatureDimension[], fallbackHtml = '') {
@@ -150,7 +170,7 @@ export function applyFunctionalDimensions(html: string, dimensions: FeatureDimen
 
   if (legacyIds.length) {
     const aliases = legacyIds.map((id) => `<button id="${id}" type="button" hidden></button>`).join('');
-    output = injectBefore(output, '</body>', aliases);
+    output = injectAfterBody(output, aliases);
   }
 
   if (!output.includes('/* IndexForge user dropdown */')) {
