@@ -3,19 +3,37 @@ type Props = {
   refreshKey: number;
 };
 
-function buildPreviewHtml(html: string): string {
-  return html
+const previewStorageScript = `<script>
+    window.__indexForgePreviewStorage = (() => {
+      const values = new Map();
+      return {
+        get length() { return values.size; },
+        getItem(key) { return values.has(String(key)) ? values.get(String(key)) : null; },
+        setItem(key, value) { values.set(String(key), String(value)); },
+        removeItem(key) { values.delete(String(key)); },
+        clear() { values.clear(); },
+        key(index) { return Array.from(values.keys())[index] ?? null; }
+      };
+    })();
+  </script>`;
+
+function replaceSandboxedStorage(html: string) {
+  const storageReference = /\b(?:(?:window|globalThis)\.)?(?:localStorage|sessionStorage)\b/g;
+  return html.replace(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi, (script, attributes: string, code: string) => {
+    if (/\bsrc\s*=/i.test(attributes)) return script;
+    return `<script${attributes}>${code.replace(storageReference, 'window.__indexForgePreviewStorage')}</script>`;
+  });
+}
+
+export function buildPreviewHtml(html: string): string {
+  const previewHtml = html
     .replace(
       /function loadPage\(file\) \{[\s\S]*?\n        \}/,
       `function loadPage(file) {
             contentFrame.src = 'about:blank';
         }`,
-    )
-    .replace(
-      "let isCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';",
-      'let isCollapsed = false;',
-    )
-    .replace("localStorage.setItem('sidebarCollapsed', collapsed);", '');
+    );
+  return replaceSandboxedStorage(previewHtml).replace(/<head([^>]*)>/i, (head) => `${head}\n  ${previewStorageScript}`);
 }
 
 export default function PreviewFrame({ html, refreshKey }: Props) {
