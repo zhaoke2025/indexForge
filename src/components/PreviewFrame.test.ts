@@ -27,4 +27,18 @@ describe('preview HTML sandbox compatibility', () => {
     expect(preview).toContain('src="https://example.com/localStorage.js"');
     expect(preview).toContain('<p>localStorage</p>');
   });
+
+  it('does not wait for external resources before initializing generated menus', () => {
+    const html = `<!DOCTYPE html><html><head>
+      <script src="https://cdn.tailwindcss.com"></script>
+    </head><body><script>
+      function init() { renderPrimaryMenu(); }
+      window.onload = init;
+    </script></body></html>`;
+
+    const preview = buildPreviewHtml(html);
+    expect(preview).not.toContain('window.onload = init');
+    expect(preview).toContain("document.addEventListener('DOMContentLoaded', init, { once: true })");
+    expect(preview).toContain('init();');
+  });
 });

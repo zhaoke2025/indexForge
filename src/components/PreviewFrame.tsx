@@ -25,6 +25,14 @@ function replaceSandboxedStorage(html: string) {
   });
 }
 
+function replaceDelayedInitialization(html: string) {
+  return html.replace(/\bwindow\.onload\s*=\s*([A-Za-z_$][\w$]*)\s*;/g, (_statement, initializer: string) => `if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', ${initializer}, { once: true });
+        } else {
+          ${initializer}();
+        }`);
+}
+
 export function buildPreviewHtml(html: string): string {
   const previewHtml = html
     .replace(
@@ -33,7 +41,8 @@ export function buildPreviewHtml(html: string): string {
             contentFrame.src = 'about:blank';
         }`,
     );
-  return replaceSandboxedStorage(previewHtml).replace(/<head([^>]*)>/i, (head) => `${head}\n  ${previewStorageScript}`);
+  return replaceDelayedInitialization(replaceSandboxedStorage(previewHtml))
+    .replace(/<head([^>]*)>/i, (head) => `${head}\n  ${previewStorageScript}`);
 }
 
 export default function PreviewFrame({ html, refreshKey }: Props) {
