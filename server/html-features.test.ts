@@ -41,7 +41,7 @@ describe('functional HTML dimensions', () => {
         <button class="user-dropdown-item">退出登录</button>
       </div>`;
     const source = template.replace('<i class="fa fa-angle-down text-slate-400"></i>', aiDropdown);
-    const html = applyFunctionalDimensions(source, dropdownDimension);
+    const html = applyFunctionalDimensions(source, dropdownDimension, template);
     expect(html.match(/id="indexForgeUserDropdown"/g)).toHaveLength(1);
     expect(html.match(/>修改密码</g)).toHaveLength(1);
     expect(html.match(/>退出登录</g)).toHaveLength(1);
@@ -55,6 +55,25 @@ describe('functional HTML dimensions', () => {
     const html = applyFunctionalDimensions(template, dropdownDimension);
     expect(html.indexOf('id="indexForgeUserMenuTrigger"')).toBeGreaterThan(html.indexOf('class="avatar-circle"'));
     expect(html.indexOf('id="indexForgeUserMenuTrigger"')).toBeGreaterThan(html.indexOf('class="user-meta"'));
+  });
+
+  it('restores the required user structure when AI removes it', () => {
+    const source = template.replace(/\s*<div class="user-menu">[\s\S]*?<\/div>\s*<\/div>\s*<i class="fa fa-angle-down text-slate-400"><\/i>\s*<\/div>/, '');
+    const html = applyFunctionalDimensions(source, dropdownDimension, template);
+    expect(hasClassElement(html, 'user-menu')).toBe(true);
+    expect(hasClassElement(html, 'avatar-circle')).toBe(true);
+    expect(hasClassElement(html, 'user-name')).toBe(true);
+    expect(hasClassElement(html, 'user-role')).toBe(true);
+    expect(validateHtml(html, { dimensions: dropdownDimension }).valid).toBe(true);
+  });
+
+  it('restores required user elements when AI removes only their classes', () => {
+    const source = template
+      .replace('class="avatar-circle"', 'class="avatar"')
+      .replace('class="user-name"', 'class="account-name"')
+      .replace('class="user-role"', 'class="account-role"');
+    const html = applyFunctionalDimensions(source, dropdownDimension, template);
+    expect(validateHtml(html, { dimensions: dropdownDimension }).valid).toBe(true);
   });
 
   it('removes the complete user area when requested by the dimension', () => {

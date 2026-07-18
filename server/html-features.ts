@@ -4,6 +4,36 @@ function injectBefore(html: string, marker: string, content: string) {
   return html.includes(marker) ? html.replace(marker, `${content}\n${marker}`) : html;
 }
 
+function hasClassElement(html: string, className: string) {
+  return new RegExp(`<[^>]+class=["'][^"']*\\b${className}\\b[^"']*["'][^>]*>`, 'i').test(html);
+}
+
+function userMenuHtml(html: string) {
+  const bounds = findUserMenu(html);
+  return bounds ? html.slice(bounds.start, bounds.closingEnd) : '';
+}
+
+function replaceUserMenu(html: string, replacement: string) {
+  const bounds = findUserMenu(html);
+  return bounds ? `${html.slice(0, bounds.start)}${replacement}${html.slice(bounds.closingEnd)}` : html;
+}
+
+function ensureUserMenu(html: string, userInfo: string, fallbackHtml: string) {
+  if (findUserMenu(html)) return html;
+  const fallbackUserMenu = userMenuHtml(fallbackHtml);
+  if (fallbackUserMenu) return html.replace(/<\/header>/i, `${fallbackUserMenu}\n        </header>`);
+  const avatar = userInfo.includes('头像') ? '<div class="avatar-circle"><i class="fa fa-user-o"></i></div>' : '';
+  const role = userInfo.includes('角色') ? '<span class="user-role">管理员</span>' : '';
+  const userMenu = `<div class="user-menu">
+                ${avatar}
+                <div class="user-meta">
+                    <span class="user-name">系统管理员</span>
+                    ${role}
+                </div>
+            </div>`;
+  return html.replace(/<\/header>/i, `${userMenu}\n        </header>`);
+}
+
 function findUserMenu(html: string) {
   const opening = /<div[^>]+class=(["'])[^"']*\buser-menu\b[^"']*\1[^>]*>/i.exec(html);
   if (!opening || opening.index === undefined) return null;
@@ -74,22 +104,38 @@ function legacyUserDropdownIds(html: string) {
   return [...ids];
 }
 
-export function applyFunctionalDimensions(html: string, dimensions: FeatureDimension[]) {
+export function applyFunctionalDimensions(html: string, dimensions: FeatureDimension[], fallbackHtml = '') {
   const userInfo = dimensions.find((item) => item.id === 'userInfo')?.value;
   if (userInfo === '移除用户') {
     const bounds = findUserMenu(html);
     return bounds ? `${html.slice(0, bounds.start)}${html.slice(bounds.closingEnd)}` : html;
   }
-  if (typeof userInfo !== 'string' || !findUserMenu(html)) return html;
+  if (typeof userInfo !== 'string') return html;
+
+  html = ensureUserMenu(html, userInfo, fallbackHtml);
+  if (!findUserMenu(html)) return html;
 
   const showAvatar = userInfo.includes('头像');
   const showRole = userInfo.includes('角色');
   const showDropdown = userInfo.includes('下拉');
+  const missingRequiredElement = !hasClassElement(html, 'user-name')
+    || (showAvatar && !hasClassElement(html, 'avatar-circle'))
+    || (showRole && !hasClassElement(html, 'user-role'));
+  const fallbackUserMenu = userMenuHtml(fallbackHtml);
+  if (missingRequiredElement && fallbackUserMenu) html = replaceUserMenu(html, fallbackUserMenu);
   const legacyIds = legacyUserDropdownIds(html);
   let output = updateUserMenu(html, (content) => {
     let next = removeUserDropdown(content);
     if (!showAvatar) next = removeElementByClass(next, 'avatar-circle');
+    if (showAvatar && !hasClassElement(next, 'avatar-circle')) {
+      next = `<div class="avatar-circle"><i class="fa fa-user-o"></i></div>${next}`;
+    }
     if (!showRole) next = removeElementByClass(next, 'user-role');
+    if (!hasClassElement(next, 'user-name')) {
+      next += `<div class="user-meta"><span class="user-name">系统管理员</span>${showRole ? '<span class="user-role">管理员</span>' : ''}</div>`;
+    } else if (showRole && !hasClassElement(next, 'user-role')) {
+      next += '<span class="user-role">管理员</span>';
+    }
     return next;
   });
 

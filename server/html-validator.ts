@@ -6,6 +6,11 @@ function hasClassElement(html: string, className: string) {
   return new RegExp(`<[^>]+class=["'][^"']*\\b${className}\\b[^"']*["'][^>]*>`, 'i').test(html);
 }
 
+function hasPlaceholderText(html: string, text: string) {
+  const escaped = text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`>\\s*${escaped}[！!。.…]?\\s*<|(["'\`])\\s*${escaped}[！!。.…]?\\s*\\1`, 'i').test(html);
+}
+
 export function validateHtml(html: string, context: ValidationContext = {}): ValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -24,7 +29,7 @@ export function validateHtml(html: string, context: ValidationContext = {}): Val
   if (!html.includes("insertAdjacentElement('afterend', wrapper)") && !html.includes('insertAdjacentElement("afterend", wrapper)')) errors.push('子菜单未以内联方式插入');
   if (/<select\b/i.test(html) || html.includes('currentTheme')) errors.push('检测到主题切换器');
   for (const word of ['页面建设中', '暂无内容', '开发中', '404']) {
-    if (html.includes(word)) errors.push(`检测到占位文字：${word}`);
+    if (hasPlaceholderText(html, word)) errors.push(`检测到占位文字：${word}`);
   }
 
   const userInfo = context.dimensions?.find((item) => item.id === 'userInfo')?.value;

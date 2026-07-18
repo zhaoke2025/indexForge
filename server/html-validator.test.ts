@@ -15,6 +15,15 @@ describe('server HTML validator', () => {
     expect(result.errors).toContain('缺少 loadPage 函数');
   });
 
+  it('does not treat a business menu named 供应商开发中心 as a placeholder', () => {
+    expect(validateHtml(template.replace('企业运营管理平台', '供应商开发中心')).valid).toBe(true);
+  });
+
+  it('still rejects an exact 开发中 placeholder', () => {
+    const result = validateHtml(template.replace('</body>', '<div>开发中</div></body>'));
+    expect(result.errors).toContain('检测到占位文字：开发中');
+  });
+
   it('rejects a decorative user arrow when the dropdown dimension is enabled', () => {
     const result = validateHtml(template, { dimensions: [{ id: 'userInfo', value: '头像+姓名+角色+下拉' }] });
     expect(result.valid).toBe(false);

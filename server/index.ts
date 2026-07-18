@@ -190,11 +190,11 @@ async function requestAi(input: { systemName: string; version: string; instructi
     return extractCompleteHtml(completion.choices[0]?.message?.content || '');
   };
   let html = await createHtml(buildHtmlPrompt({ systemName: input.systemName, version: input.version, instruction: input.instruction, dimensions: activeDimensions, requirements: activeRequirements, baseHtml, refining: Boolean(input.current) }));
-  html = applyFunctionalDimensions(html, activeDimensions);
+  html = applyFunctionalDimensions(html, activeDimensions, baseHtml);
   let validation = validateHtml(html, { dimensions: activeDimensions });
   if (!validation.valid) {
     html = await createHtml(buildRepairPrompt(html, validation.errors));
-    html = applyFunctionalDimensions(html, activeDimensions);
+    html = applyFunctionalDimensions(html, activeDimensions, baseHtml);
     validation = validateHtml(html, { dimensions: activeDimensions });
   }
   if (!validation.valid) throw new Error(`AI生成的HTML未通过校验：${validation.errors.join('；')}`);
