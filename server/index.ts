@@ -8,11 +8,13 @@ import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 import OpenAI from 'openai';
 import { buildHtmlPrompt, buildRepairPrompt, extractCompleteHtml, htmlSystemPrompt } from './ai-html.js';
+import { appliedDimensionDecisions, buildDimensionDecisionPrompt, parseDimensionPlan, type DimensionDecision, type DimensionDefinition } from './dimension-decisions.js';
 import { applyFunctionalDimensions, ensureReferencedElementAliases } from './html-features.js';
-import { validateHtml } from './html-validator.js';
-import { buildLoginPrompt, buildLoginRepairPrompt, extractLoginHtml, loginSystemPrompt, validateLoginHtml } from './login-ai.js';
+import { validateHtml, validateRequirementChecks } from './html-validator.js';
+import { buildLoginPrompt, buildLoginRepairPrompt, extractLoginHtml, loginSystemPrompt, validateLoginHtml, validateLoginRequirementChecks } from './login-ai.js';
 import { Store, type Row } from './store.js';
 import { seedLoginDimensions, seedLoginRequirements } from './defaults.js';
+import { repairUntilValid } from './repair-loop.js';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
@@ -28,6 +30,7 @@ const store = await Store.open();
 const port = Number(process.env.API_PORT || process.env.PORT || 8787);
 const isProduction = process.env.NODE_ENV === 'production';
 const allowedOrigins = (process.env.CORS_ORIGINS || '').split(',').map((value) => value.trim()).filter(Boolean);
+const maxRepairAttempts = Math.min(5, Math.max(1, Number(process.env.AI_REPAIR_MAX_ATTEMPTS || 3)));
 
 if (process.env.TRUST_PROXY) app.set('trust proxy', Number(process.env.TRUST_PROXY) || process.env.TRUST_PROXY);
 app.disable('x-powered-by');
@@ -75,11 +78,11 @@ function dimensions() { return store.all<DimensionRow>('SELECT * FROM dimensions
 function requirements() { return store.all<RequirementRow>('SELECT * FROM requirements ORDER BY sort_order, created_at').map(requirementDto); }
 function loginDimensions() { return store.all<DimensionRow>('SELECT * FROM login_dimensions ORDER BY sort_order, created_at').map(dimensionDto); }
 function loginRequirements() { return store.all<RequirementRow>('SELECT * FROM login_requirements ORDER BY sort_order, created_at').map(requirementDto); }
-function dimensionDto(row: DimensionRow) { return { id: row.id, name: row.name, group: row.group_name, description: row.description, valueType: row.value_type, value: parseJson(row.default_value, row.default_value), options: parseJson<string[]>(row.options_json, []), enabled: bool(row.enabled), sortOrder: Number(row.sort_order) }; }
+function dimensionDto(row: DimensionRow) { return { id: row.id, name: row.name, group: row.group_name, description: row.description, valueType: row.value_type, options: parseJson<string[]>(row.options_json, []), enabled: bool(row.enabled), sortOrder: Number(row.sort_order) }; }
 function requirementDto(row: RequirementRow) { return { id: row.id, name: row.name, description: row.description, level: row.level, validationType: row.validation_type, builtinValidator: row.builtin_validator || undefined, enabled: bool(row.enabled), sortOrder: Number(row.sort_order) }; }
 function templateDto(row: TemplateRow) { const saved = parseJson<ReturnType<typeof validateHtml> | null>(row.validation_json, null); return { id: row.id, name: row.name, html: row.html, validation: saved && typeof saved.valid === 'boolean' ? saved : validateHtml(row.html), isCurrent: bool(row.is_current) }; }
 function generationDto(row: GenerationRow) { return { id: row.id, parentId: row.parent_id || undefined, systemName: row.system_name, version: row.version_input || '', displayName: row.display_name, instruction: row.instruction || '', refinementInstruction: row.refinement_instruction || '', systemType: row.system_type || '', toneSummary: row.tone_summary || '', dimensions: parseJson(row.decisions_json, []), menuConfig: parseJson(row.menu_json, []), requirementChecks: parseJson(row.requirement_checks_json, []), validation: parseJson(row.validation_json, { valid: false, errors: [], warnings: [] }), html: ensureReferencedElementAliases(row.html), status: row.status, generatedAt: row.created_at }; }
-function loginGenerationDto(row: GenerationRow) { return { id: row.id, parentId: row.parent_id || undefined, sourceGenerationId: row.source_generation_id, systemName: row.system_name, version: row.version_input || '', slogan: row.slogan || '', instruction: row.instruction || '', refinementInstruction: row.refinement_instruction || '', config: parseJson(row.config_json, {}), validation: parseJson(row.validation_json, { valid: false, errors: [], warnings: [] }), html: row.html, status: row.status, generatedAt: row.created_at }; }
+function loginGenerationDto(row: GenerationRow) { return { id: row.id, parentId: row.parent_id || undefined, sourceGenerationId: row.source_generation_id, systemName: row.system_name, version: row.version_input || '', slogan: row.slogan || '', instruction: row.instruction || '', refinementInstruction: row.refinement_instruction || '', config: parseJson(row.config_json, {}), dimensions: parseJson(row.decisions_json, []), requirementChecks: parseJson(row.requirement_checks_json, []), validation: parseJson(row.validation_json, { valid: false, errors: [], warnings: [] }), html: row.html, status: row.status, generatedAt: row.created_at }; }
 
 function validateId(value: unknown) {
   const id = String(value || '').trim();
@@ -90,11 +93,8 @@ function validateId(value: unknown) {
 function dimensionValue(body: Record<string, unknown>) {
   const valueType = String(body.valueType || 'text');
   const options = Array.isArray(body.options) ? body.options.map(String).map((item) => item.trim()).filter(Boolean) : [];
-  const value = body.value ?? '';
-  if (valueType === 'single-select' && (!options.length || !options.includes(String(value)))) {
-    throw Object.assign(new Error('单选维度的默认值必须从选项中选择'), { status: 400 });
-  }
-  return { valueType, options, value };
+  if (valueType === 'single-select' && !options.length) throw Object.assign(new Error('单选维度必须配置至少一个可选项'), { status: 400 });
+  return { valueType, options };
 }
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, hasApiKey: Boolean(process.env.OPENAI_API_KEY), model: process.env.OPENAI_MODEL || 'deepseek-chat', database: true }));
@@ -106,14 +106,14 @@ app.post('/api/dimensions', (req, res) => {
   if (!name) return void res.status(400).json({ error: '维度名称不能为空' });
   if (store.get('SELECT id FROM dimensions WHERE id=?', [id])) return void res.status(409).json({ error: '维度ID已存在' });
   const list = dimensions(); const created = now();
-  store.run('INSERT INTO dimensions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [id, name, String(req.body?.group || '自定义'), String(req.body?.description || ''), String(req.body?.valueType || 'text'), JSON.stringify(req.body?.value ?? ''), JSON.stringify(Array.isArray(req.body?.options) ? req.body.options : []), bool(req.body?.enabled) ? 1 : 0, list.length, created, created]);
+  store.run('INSERT INTO dimensions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [id, name, String(req.body?.group || '自定义'), String(req.body?.description || ''), String(req.body?.valueType || 'text'), 'null', JSON.stringify(Array.isArray(req.body?.options) ? req.body.options : []), bool(req.body?.enabled) ? 1 : 0, list.length, created, created]);
   res.status(201).json({ dimension: dimensions().find((item) => item.id === id) });
 });
 app.put('/api/dimensions/:id', (req, res) => {
   dimensionValue(req.body || {});
   const id = req.params.id; if (!store.get('SELECT id FROM dimensions WHERE id=?', [id])) return void res.status(404).json({ error: '维度不存在' });
   const name = String(req.body?.name || '').trim(); if (!name) return void res.status(400).json({ error: '维度名称不能为空' });
-  store.run('UPDATE dimensions SET name=?,group_name=?,description=?,value_type=?,default_value=?,options_json=?,enabled=?,updated_at=? WHERE id=?', [name, String(req.body?.group || '自定义'), String(req.body?.description || ''), String(req.body?.valueType || 'text'), JSON.stringify(req.body?.value ?? ''), JSON.stringify(Array.isArray(req.body?.options) ? req.body.options : []), bool(req.body?.enabled) ? 1 : 0, now(), id]);
+  store.run('UPDATE dimensions SET name=?,group_name=?,description=?,value_type=?,default_value=?,options_json=?,enabled=?,updated_at=? WHERE id=?', [name, String(req.body?.group || '自定义'), String(req.body?.description || ''), String(req.body?.valueType || 'text'), 'null', JSON.stringify(Array.isArray(req.body?.options) ? req.body.options : []), bool(req.body?.enabled) ? 1 : 0, now(), id]);
   res.json({ dimension: dimensions().find((item) => item.id === id) });
 });
 app.delete('/api/dimensions/:id', (req, res) => { if (!store.get('SELECT id FROM dimensions WHERE id=?', [req.params.id])) return void res.status(404).json({ error: '维度不存在' }); store.run('DELETE FROM dimensions WHERE id=?', [req.params.id]); res.status(204).end(); });
@@ -141,19 +141,19 @@ app.get('/api/login-dimensions', (_req, res) => res.json({ dimensions: loginDime
 app.post('/api/login-dimensions', (req, res) => {
   dimensionValue(req.body || {}); const id = validateId(req.body?.id); const name = String(req.body?.name || '').trim();
   if (!name) return void res.status(400).json({ error: '维度名称不能为空' }); if (store.get('SELECT id FROM login_dimensions WHERE id=?', [id])) return void res.status(409).json({ error: '维度ID已存在' });
-  const created = now(); store.run('INSERT INTO login_dimensions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [id, name, String(req.body?.group || '自定义'), String(req.body?.description || ''), String(req.body?.valueType || 'text'), JSON.stringify(req.body?.value ?? ''), JSON.stringify(req.body?.options || []), bool(req.body?.enabled) ? 1 : 0, loginDimensions().length, created, created]); res.status(201).json({ dimension: loginDimensions().find((item) => item.id === id) });
+  const created = now(); store.run('INSERT INTO login_dimensions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [id, name, String(req.body?.group || '自定义'), String(req.body?.description || ''), String(req.body?.valueType || 'text'), 'null', JSON.stringify(req.body?.options || []), bool(req.body?.enabled) ? 1 : 0, loginDimensions().length, created, created]); res.status(201).json({ dimension: loginDimensions().find((item) => item.id === id) });
 });
-app.put('/api/login-dimensions/:id', (req, res) => { dimensionValue(req.body || {}); const id = req.params.id; if (!store.get('SELECT id FROM login_dimensions WHERE id=?', [id])) return void res.status(404).json({ error: '登录页维度不存在' }); store.run('UPDATE login_dimensions SET name=?,group_name=?,description=?,value_type=?,default_value=?,options_json=?,enabled=?,updated_at=? WHERE id=?', [String(req.body?.name || ''), String(req.body?.group || ''), String(req.body?.description || ''), String(req.body?.valueType || 'text'), JSON.stringify(req.body?.value ?? ''), JSON.stringify(req.body?.options || []), bool(req.body?.enabled) ? 1 : 0, now(), id]); res.json({ dimension: loginDimensions().find((item) => item.id === id) }); });
+app.put('/api/login-dimensions/:id', (req, res) => { dimensionValue(req.body || {}); const id = req.params.id; if (!store.get('SELECT id FROM login_dimensions WHERE id=?', [id])) return void res.status(404).json({ error: '登录页维度不存在' }); store.run('UPDATE login_dimensions SET name=?,group_name=?,description=?,value_type=?,default_value=?,options_json=?,enabled=?,updated_at=? WHERE id=?', [String(req.body?.name || ''), String(req.body?.group || ''), String(req.body?.description || ''), String(req.body?.valueType || 'text'), 'null', JSON.stringify(req.body?.options || []), bool(req.body?.enabled) ? 1 : 0, now(), id]); res.json({ dimension: loginDimensions().find((item) => item.id === id) }); });
 app.delete('/api/login-dimensions/:id', (req, res) => { store.run('DELETE FROM login_dimensions WHERE id=?', [req.params.id]); res.status(204).end(); });
 app.post('/api/login-dimensions/reorder', (req, res) => { const ids: string[] = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : []; store.transaction(() => ids.forEach((id, index) => store.run('UPDATE login_dimensions SET sort_order=? WHERE id=?', [index, id]))); res.json({ dimensions: loginDimensions() }); });
-app.post('/api/login-dimensions/reset', (_req, res) => { const created = now(); store.transaction(() => { store.run('DELETE FROM login_dimensions'); seedLoginDimensions.forEach((item, index) => store.run('INSERT INTO login_dimensions VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)', [item.id, item.name, item.groupName, item.description, item.valueType, JSON.stringify(item.defaultValue), JSON.stringify(item.options), index, created, created])); }); res.json({ dimensions: loginDimensions() }); });
+app.post('/api/login-dimensions/reset', (_req, res) => { const created = now(); store.transaction(() => { store.run('DELETE FROM login_dimensions'); seedLoginDimensions.forEach((item, index) => store.run('INSERT INTO login_dimensions VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)', [item.id, item.name, item.groupName, item.description, item.valueType, 'null', JSON.stringify(item.options), index, created, created])); }); res.json({ dimensions: loginDimensions() }); });
 
 app.get('/api/login-requirements', (_req, res) => res.json({ requirements: loginRequirements() }));
-app.post('/api/login-requirements', (req, res) => { const id = validateId(req.body?.id); const created = now(); store.run('INSERT INTO login_requirements VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [id, String(req.body?.name || ''), String(req.body?.description || ''), String(req.body?.level || 'required'), String(req.body?.validationType || 'ai'), null, bool(req.body?.enabled) ? 1 : 0, loginRequirements().length, created, created]); res.status(201).json({ requirement: loginRequirements().find((item) => item.id === id) }); });
-app.put('/api/login-requirements/:id', (req, res) => { const id = req.params.id; if (!store.get('SELECT id FROM login_requirements WHERE id=?', [id])) return void res.status(404).json({ error: '登录页要求不存在' }); store.run('UPDATE login_requirements SET name=?,description=?,level=?,validation_type=?,enabled=?,updated_at=? WHERE id=?', [String(req.body?.name || ''), String(req.body?.description || ''), String(req.body?.level || 'required'), String(req.body?.validationType || 'ai'), bool(req.body?.enabled) ? 1 : 0, now(), id]); res.json({ requirement: loginRequirements().find((item) => item.id === id) }); });
+app.post('/api/login-requirements', (req, res) => { const id = validateId(req.body?.id); const created = now(); store.run('INSERT INTO login_requirements VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [id, String(req.body?.name || ''), String(req.body?.description || ''), String(req.body?.level || 'required'), String(req.body?.validationType || 'ai'), req.body?.builtinValidator || null, bool(req.body?.enabled) ? 1 : 0, loginRequirements().length, created, created]); res.status(201).json({ requirement: loginRequirements().find((item) => item.id === id) }); });
+app.put('/api/login-requirements/:id', (req, res) => { const id = req.params.id; if (!store.get('SELECT id FROM login_requirements WHERE id=?', [id])) return void res.status(404).json({ error: '登录页要求不存在' }); store.run('UPDATE login_requirements SET name=?,description=?,level=?,validation_type=?,builtin_validator=?,enabled=?,updated_at=? WHERE id=?', [String(req.body?.name || ''), String(req.body?.description || ''), String(req.body?.level || 'required'), String(req.body?.validationType || 'ai'), req.body?.builtinValidator || null, bool(req.body?.enabled) ? 1 : 0, now(), id]); res.json({ requirement: loginRequirements().find((item) => item.id === id) }); });
 app.delete('/api/login-requirements/:id', (req, res) => { store.run('DELETE FROM login_requirements WHERE id=?', [req.params.id]); res.status(204).end(); });
 app.post('/api/login-requirements/reorder', (req, res) => { const ids: string[] = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : []; store.transaction(() => ids.forEach((id, index) => store.run('UPDATE login_requirements SET sort_order=? WHERE id=?', [index, id]))); res.json({ requirements: loginRequirements() }); });
-app.post('/api/login-requirements/reset', (_req, res) => { const created = now(); store.transaction(() => { store.run('DELETE FROM login_requirements'); seedLoginRequirements.forEach((item, index) => store.run('INSERT INTO login_requirements VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)', [item[0], item[1], item[2], 'required', 'ai', null, index, created, created])); }); res.json({ requirements: loginRequirements() }); });
+app.post('/api/login-requirements/reset', (_req, res) => { const created = now(); store.transaction(() => { store.run('DELETE FROM login_requirements'); seedLoginRequirements.forEach((item, index) => store.run('INSERT INTO login_requirements VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)', [item[0], item[1], item[2], item[3], item[4], item[5], index, created, created])); }); res.json({ requirements: loginRequirements() }); });
 
 app.get('/api/templates', (_req, res) => res.json({ templates: store.all<TemplateRow>('SELECT * FROM templates ORDER BY created_at DESC').map(templateDto) }));
 app.post('/api/templates', (req, res) => { const html = String(req.body?.html || ''); const validation = validateHtml(html); if (!validation.valid) return void res.status(400).json({ error: '母版结构校验失败', validation }); const id = crypto.randomUUID(); store.run('INSERT INTO templates VALUES (?, ?, ?, ?, 0, ?, ?)', [id, String(req.body?.name || 'index.html'), html, JSON.stringify(validation), now(), now()]); res.status(201).json({ template: templateDto(store.get<TemplateRow>('SELECT * FROM templates WHERE id=?', [id])!) }); });
@@ -165,6 +165,32 @@ function openAiClient() {
   return new OpenAI({ apiKey, baseURL: process.env.OPENAI_BASE_URL || 'https://api.deepseek.com', timeout: Number(process.env.AI_REQUEST_TIMEOUT_MS || 120_000), maxRetries: 1 });
 }
 
+async function requestDimensionPlan(input: { systemName: string; instruction: string; dimensions: DimensionDefinition[]; page: 'index' | 'login'; previous?: DimensionDecision[]; resources?: string[] }) {
+  const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+    { role: 'system', content: '你是页面设计规划师。根据系统业务和用户自然语言要求评估全部启用维度，并严格返回JSON。用户本次要求优先于上一版方案、母版和可用资源；不得为了填写完整而把所有维度都标记为应用。' },
+    { role: 'user', content: buildDimensionDecisionPrompt(input) },
+  ];
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const completion = await openAiClient().chat.completions.create({
+      model: process.env.OPENAI_MODEL || 'deepseek-chat',
+      temperature: 0.2,
+      max_tokens: Number(process.env.AI_DIMENSION_MAX_TOKENS || 4096),
+      response_format: { type: 'json_object' },
+      messages,
+    });
+    const content = completion.choices[0]?.message?.content || '';
+    try { return parseDimensionPlan(content, input.dimensions); }
+    catch (error) {
+      if (attempt === 1) throw error;
+      messages.push(
+        { role: 'assistant', content },
+        { role: 'user', content: `上次维度评估不合规：${error instanceof Error ? error.message : '未知错误'}。请重新评估全部候选项，只保留少量对当前系统有显著价值且会实际落入HTML的维度，并严格遵守 applied 数量上限。` },
+      );
+    }
+  }
+  throw new Error('AI维度评估失败');
+}
+
 function displayName(systemName: string, version: string) {
   if (!version || /V\d+(\.\d+){0,2}/i.test(systemName)) return systemName;
   const normalized = /^v/i.test(version) ? version.toUpperCase() : /^\d/.test(version) ? `V${version}` : version;
@@ -174,6 +200,11 @@ function displayName(systemName: string, version: string) {
 async function requestAi(input: { systemName: string; version: string; instruction: string; template: TemplateRow; current?: GenerationRow }) {
   const activeDimensions = dimensions().filter((item) => item.enabled);
   const activeRequirements = requirements().filter((item) => item.enabled);
+  const activeDimensionIds = new Set(activeDimensions.map((item) => item.id));
+  const previousDecisions = input.current ? parseJson<DimensionDecision[]>(input.current.decisions_json, []).filter((item) => activeDimensionIds.has(item.dimensionId)) : undefined;
+  const plan = await requestDimensionPlan({ systemName: input.systemName, instruction: input.instruction, dimensions: activeDimensions, page: 'index', previous: previousDecisions });
+  const selectedDecisions = appliedDimensionDecisions(plan.dimensions);
+  const appliedDimensions = selectedDecisions.map((item) => ({ id: item.dimensionId, value: item.value }));
   const baseHtml = input.current?.html || input.template.html;
   const createHtml = async (userPrompt: string) => {
     const messages = [{ role: 'system' as const, content: htmlSystemPrompt }, { role: 'user' as const, content: userPrompt }];
@@ -189,22 +220,30 @@ async function requestAi(input: { systemName: string; version: string; instructi
     if (completion.choices[0]?.finish_reason === 'length') throw new Error('AI输出HTML超出长度限制，请重试或使用输出能力更强的模型');
     return extractCompleteHtml(completion.choices[0]?.message?.content || '');
   };
-  let html = await createHtml(buildHtmlPrompt({ systemName: input.systemName, version: input.version, instruction: input.instruction, dimensions: activeDimensions, requirements: activeRequirements, baseHtml, refining: Boolean(input.current) }));
-  html = applyFunctionalDimensions(html, activeDimensions, baseHtml);
-  let validation = validateHtml(html, { dimensions: activeDimensions });
-  if (!validation.valid) {
-    html = await createHtml(buildRepairPrompt(html, validation.errors));
-    html = applyFunctionalDimensions(html, activeDimensions, baseHtml);
-    validation = validateHtml(html, { dimensions: activeDimensions });
+  const inspect = (candidate: string) => {
+    const validation = validateHtml(candidate, { requirements: activeRequirements });
+    const requirementChecks = validateRequirementChecks(candidate, activeRequirements);
+    const checkErrors = requirementChecks.filter((item) => !item.passed).map((item) => `${item.requirementId}：${item.detail}`);
+    return { validation: { ...validation, valid: validation.valid && checkErrors.length === 0, errors: [...validation.errors, ...checkErrors.filter((error) => !validation.errors.includes(error))] }, requirementChecks };
+  };
+  const initialHtml = applyFunctionalDimensions(await createHtml(buildHtmlPrompt({ systemName: input.systemName, version: input.version, instruction: input.instruction, dimensions: activeDimensions, decisions: selectedDecisions, requirements: activeRequirements, baseHtml, refining: Boolean(input.current) })), appliedDimensions, baseHtml);
+  const repaired = await repairUntilValid({
+    initialHtml,
+    inspect,
+    maxAttempts: maxRepairAttempts,
+    repair: async (html, errors) => applyFunctionalDimensions(await createHtml(buildRepairPrompt(html, errors, selectedDecisions)), appliedDimensions, baseHtml),
+  });
+  const { html, inspection: inspected } = repaired;
+  if (!inspected.validation.valid) {
+    console.error(`AI首页自动修复 ${repaired.attempts} 次后仍未通过：${inspected.validation.errors.join('；')}`);
+    throw Object.assign(new Error('生成结果暂未通过自动检查，系统已自动重试，请稍后再次生成'), { status: 422 });
   }
-  if (!validation.valid) throw new Error(`AI生成的HTML未通过校验：${validation.errors.join('；')}`);
-  const requirementChecks = activeRequirements.map((item) => ({ requirementId: item.id, passed: true, detail: item.validationType === 'builtin' ? '本地校验通过' : '已作为AI生成约束' }));
-  return { html, validation, requirementChecks, activeDimensions, activeRequirements };
+  return { html, validation: inspected.validation, requirementChecks: inspected.requirementChecks, activeDimensions, activeRequirements, plan };
 }
 
 async function saveGeneration(input: { systemName: string; version: string; instruction: string; refinementInstruction?: string; parentId?: string; template: TemplateRow; ai: Awaited<ReturnType<typeof requestAi>> }) {
   const id = crypto.randomUUID(); const created = now(); const name = displayName(input.systemName, input.version);
-  store.run(`INSERT INTO generation_records VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [id, input.parentId || null, input.systemName, input.version || null, name, input.instruction || null, input.refinementInstruction || null, 'AI深度定制', input.refinementInstruction ? 'AI基于上一版HTML按调整意见精准修改。' : 'AI基于母版、实体维度和硬性要求直接生成完整HTML。', input.template.id, input.template.html, JSON.stringify(input.ai.activeDimensions), '[]', '[]', JSON.stringify(input.ai.activeRequirements), JSON.stringify(input.ai.requirementChecks), JSON.stringify(input.ai.validation), input.ai.html, 'success', created]);
+  store.run(`INSERT INTO generation_records VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [id, input.parentId || null, input.systemName, input.version || null, name, input.instruction || null, input.refinementInstruction || null, input.ai.plan.systemType || 'AI深度定制', input.ai.plan.toneSummary || (input.refinementInstruction ? 'AI基于上一版HTML按调整意见精准修改。' : 'AI根据系统业务自动适配实体维度。'), input.template.id, input.template.html, JSON.stringify(input.ai.activeDimensions), JSON.stringify(input.ai.plan.dimensions), '[]', JSON.stringify(input.ai.activeRequirements), JSON.stringify(input.ai.requirementChecks), JSON.stringify(input.ai.validation), input.ai.html, 'success', created]);
   return generationDto(store.get<GenerationRow>('SELECT * FROM generation_records WHERE id=?', [id])!);
 }
 
@@ -227,7 +266,8 @@ app.get('/api/generations/:id', (req, res) => { const row = store.get<Generation
 app.delete('/api/generations/:id', (req, res) => { const id = String(req.params.id); if (!store.get('SELECT id FROM generation_records WHERE id=?', [id])) return void res.status(404).json({ error: '生成记录不存在' }); store.run('DELETE FROM generation_records WHERE id=?', [id]); res.status(204).end(); });
 
 async function requestLoginAi(input: { config: Record<string, unknown>; instruction: string; referenceHtml: string; current?: GenerationRow }) {
-  const activeRequirements = loginRequirements().filter((item) => item.enabled).map((item) => `${item.id} ${item.name}：${item.description}`);
+  const activeRequirements = loginRequirements().filter((item) => item.enabled);
+  const promptRequirements = activeRequirements.map((item) => `${item.id} ${item.name}：${item.description}`);
   const backgroundImage = String(input.config.backgroundType || '') === '图片通铺' ? String(input.config.backgroundImage || '') : '';
   const promptConfig = { ...input.config, backgroundImage: backgroundImage ? '已上传；使用__LOGIN_BACKGROUND_IMAGE__占位符，由后端注入' : '' };
   const previousHtml = input.current?.html.replace(/data:image\/[a-zA-Z0-9.+-]+;base64,[a-zA-Z0-9+/=]+/g, '__LOGIN_BACKGROUND_IMAGE__');
@@ -240,43 +280,67 @@ async function requestLoginAi(input: { config: Record<string, unknown>; instruct
     if (completion.choices[0]?.finish_reason === 'length') throw new Error('AI输出登录页超出长度限制，请重试');
     return extractLoginHtml(completion.choices[0]?.message?.content || '');
   };
-  let html = await createHtml(buildLoginPrompt({ config: promptConfig, requirements: activeRequirements, instruction: input.instruction, referenceHtml: input.referenceHtml, previousHtml }));
-  let validation = validateLoginHtml(html, input.config);
-  if (!validation.valid) { html = await createHtml(buildLoginRepairPrompt(html, validation.errors)); validation = validateLoginHtml(html, input.config); }
-  if (!validation.valid) throw new Error(`AI生成的登录页未通过校验：${validation.errors.join('；')}`);
+  const inspect = (candidate: string) => {
+    const validation = validateLoginHtml(candidate, input.config, activeRequirements);
+    const requirementChecks = validateLoginRequirementChecks(candidate, input.config, activeRequirements);
+    const checkErrors = requirementChecks.filter((item) => !item.passed).map((item) => `${item.requirementId}：${item.detail}`);
+    return { validation: { ...validation, valid: validation.valid && checkErrors.length === 0, errors: [...validation.errors, ...checkErrors] }, requirementChecks };
+  };
+  const repaired = await repairUntilValid({
+    initialHtml: await createHtml(buildLoginPrompt({ config: promptConfig, requirements: promptRequirements, instruction: input.instruction, referenceHtml: input.referenceHtml, previousHtml })),
+    inspect,
+    maxAttempts: maxRepairAttempts,
+    repair: (html, errors) => createHtml(buildLoginRepairPrompt(html, errors, promptConfig)),
+  });
+  let { html } = repaired;
+  const inspected = repaired.inspection;
+  if (!inspected.validation.valid) {
+    console.error(`AI登录页自动修复 ${repaired.attempts} 次后仍未通过：${inspected.validation.errors.join('；')}`);
+    throw Object.assign(new Error('登录页暂未通过自动检查，系统已自动重试，请稍后再次生成'), { status: 422 });
+  }
   if (backgroundImage) {
     if (html.includes('__LOGIN_BACKGROUND_IMAGE__')) html = html.replaceAll('__LOGIN_BACKGROUND_IMAGE__', backgroundImage);
     else html = html.replace('</head>', `<style id="uploaded-login-background">html body{background-image:url("${backgroundImage}")!important;background-size:cover!important;background-position:center!important;background-repeat:no-repeat!important}</style></head>`);
   }
-  return { html, validation };
+  return { html, validation: inspected.validation, requirementChecks: inspected.requirementChecks, activeRequirements };
 }
 
-function saveLoginGeneration(input: { source: GenerationRow; config: Record<string, unknown>; instruction: string; refinementInstruction?: string; parentId?: string; referenceHtml: string; ai: Awaited<ReturnType<typeof requestLoginAi>> }) {
+function saveLoginGeneration(input: { source: GenerationRow; config: Record<string, unknown>; dimensions: DimensionDefinition[]; plan: Awaited<ReturnType<typeof requestDimensionPlan>>; instruction: string; refinementInstruction?: string; parentId?: string; referenceHtml: string; ai: Awaited<ReturnType<typeof requestLoginAi>> }) {
   const id = crypto.randomUUID(); const created = now();
-  store.run('INSERT INTO login_generation_records VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [id, input.parentId || null, input.source.id, String(input.config.systemName || input.source.system_name), String(input.config.version || ''), String(input.config.slogan || ''), input.instruction, input.refinementInstruction || null, JSON.stringify(input.config), input.referenceHtml, JSON.stringify(input.ai.validation), input.ai.html, 'success', created]);
+  store.run(`INSERT INTO login_generation_records (id,parent_id,source_generation_id,system_name,version_input,slogan,instruction,refinement_instruction,config_json,reference_html,dimensions_snapshot_json,decisions_json,requirements_snapshot_json,requirement_checks_json,validation_json,html,status,created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [id, input.parentId || null, input.source.id, String(input.config.systemName || input.source.system_name), String(input.config.version || ''), String(input.config.slogan || ''), input.instruction, input.refinementInstruction || null, JSON.stringify(input.config), input.referenceHtml, JSON.stringify(input.dimensions), JSON.stringify(input.plan.dimensions), JSON.stringify(input.ai.activeRequirements), JSON.stringify(input.ai.requirementChecks), JSON.stringify(input.ai.validation), input.ai.html, 'success', created]);
   return loginGenerationDto(store.get<GenerationRow>('SELECT * FROM login_generation_records WHERE id=?', [id])!);
 }
 
 app.post('/api/login-generations', aiLimiter, asyncRoute(async (req, res) => {
   const submitted = req.body?.config && typeof req.body.config === 'object' ? req.body.config as Record<string, unknown> : {};
-  const config = loginDimensions().filter((item) => item.enabled).reduce<Record<string, unknown>>((result, item) => { result[item.id] = item.value; return result; }, { systemName: submitted.systemName, brandColor: submitted.brandColor, backgroundImage: submitted.backgroundImage });
-  if (config.colorMode !== '独立品牌色') delete config.brandColor;
-  if (config.backgroundType !== '图片通铺') delete config.backgroundImage;
   const sourceId = String(req.body?.sourceGenerationId || '');
   const source = sourceId ? store.get<GenerationRow>('SELECT * FROM generation_records WHERE id=?', [sourceId]) : store.get<GenerationRow>('SELECT * FROM generation_records ORDER BY created_at DESC LIMIT 1');
   if (!source) return void res.status(409).json({ error: '请先生成一个首页，登录页需要参考首页视觉风格' });
   const instruction = String(req.body?.instruction || '').trim().slice(0, 2000);
+  const activeDimensions = loginDimensions().filter((item) => item.enabled);
+  const systemName = String(submitted.systemName || source.system_name);
+  const plan = await requestDimensionPlan({ systemName, instruction, dimensions: activeDimensions, page: 'login', resources: submitted.backgroundImage ? ['已上传一张可用的登录页背景图片'] : [] });
+  const config = appliedDimensionDecisions(plan.dimensions).reduce<Record<string, unknown>>((result, item) => { result[item.dimensionId] = item.value; return result; }, { systemName, backgroundImage: submitted.backgroundImage });
+  if (config.backgroundType !== '图片通铺') delete config.backgroundImage;
   const ai = await requestLoginAi({ config, instruction, referenceHtml: source.html });
-  res.status(201).json({ generation: saveLoginGeneration({ source, config, instruction, referenceHtml: source.html, ai }) });
+  res.status(201).json({ generation: saveLoginGeneration({ source, config, dimensions: activeDimensions, plan, instruction, referenceHtml: source.html, ai }) });
 }));
 app.post('/api/login-generations/:id/refine', aiLimiter, asyncRoute(async (req, res) => {
   const current = store.get<GenerationRow>('SELECT * FROM login_generation_records WHERE id=?', [String(req.params.id)]);
   if (!current) return void res.status(404).json({ error: '登录页生成记录不存在' });
   const instruction = String(req.body?.instruction || '').trim().slice(0, 2000); if (!instruction) return void res.status(400).json({ error: '调整意见不能为空' });
   const source = store.get<GenerationRow>('SELECT * FROM generation_records WHERE id=?', [current.source_generation_id]); if (!source) return void res.status(409).json({ error: '参考首页记录不存在' });
-  const config = parseJson<Record<string, unknown>>(current.config_json, {});
+  const submitted = req.body?.config && typeof req.body.config === 'object' ? req.body.config as Record<string, unknown> : {};
+  const previousConfig = parseJson<Record<string, unknown>>(current.config_json, {});
+  const submittedBackgroundImage = typeof submitted.backgroundImage === 'string' ? submitted.backgroundImage : String(previousConfig.backgroundImage || '');
+  const activeDimensions = parseJson<DimensionDefinition[]>(current.dimensions_snapshot_json, loginDimensions().filter((item) => item.enabled));
+  const previous = parseJson<DimensionDecision[]>(current.decisions_json, []);
+  const plan = await requestDimensionPlan({ systemName: current.system_name, instruction, dimensions: activeDimensions, page: 'login', previous, resources: submittedBackgroundImage ? ['已上传一张可用的登录页背景图片'] : [] });
+  const config = appliedDimensionDecisions(plan.dimensions).reduce<Record<string, unknown>>((result, item) => { result[item.dimensionId] = item.value; return result; }, { systemName: current.system_name, backgroundImage: submittedBackgroundImage });
+  if (config.backgroundType !== '图片通铺') delete config.backgroundImage;
   const ai = await requestLoginAi({ config, instruction, referenceHtml: current.reference_html, current });
-  res.status(201).json({ generation: saveLoginGeneration({ source, config, instruction: current.instruction || '', refinementInstruction: instruction, parentId: current.id, referenceHtml: current.reference_html, ai }) });
+  res.status(201).json({ generation: saveLoginGeneration({ source, config, dimensions: activeDimensions, plan, instruction: current.instruction || '', refinementInstruction: instruction, parentId: current.id, referenceHtml: current.reference_html, ai }) });
 }));
 app.get('/api/login-generations', (_req, res) => res.json({ generations: store.all<GenerationRow>('SELECT * FROM login_generation_records ORDER BY created_at DESC LIMIT 100').map(loginGenerationDto) }));
 app.post('/api/login-generations/bulk-delete', (req, res) => { const ids = [...new Set<string>((Array.isArray(req.body?.ids) ? req.body.ids : []).map((id: unknown) => String(id)).filter(Boolean))].slice(0, 100); if (!ids.length) return void res.status(400).json({ error: '请选择需要删除的登录页记录' }); store.transaction(() => ids.forEach((id) => store.run('DELETE FROM login_generation_records WHERE id=?', [id]))); res.json({ deleted: ids.length }); });

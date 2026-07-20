@@ -48,7 +48,7 @@ export const api = {
   deleteGeneration: (id: string) => request<void>(`/api/generations/${id}`, { method: 'DELETE' }),
   deleteGenerations: (ids: string[]) => request<{ deleted: number }>('/api/generations/bulk-delete', { method: 'POST', body: JSON.stringify({ ids }) }),
   generateLogin: (body: { config: LoginConfig; instruction: string; sourceGenerationId?: string }) => request<{ generation: LoginHistoryRecord }>('/api/login-generations', { method: 'POST', body: JSON.stringify(body) }),
-  refineLogin: (id: string, instruction: string) => request<{ generation: LoginHistoryRecord }>(`/api/login-generations/${id}/refine`, { method: 'POST', body: JSON.stringify({ instruction }) }),
+  refineLogin: (id: string, instruction: string, backgroundImage: string) => request<{ generation: LoginHistoryRecord }>(`/api/login-generations/${id}/refine`, { method: 'POST', body: JSON.stringify({ instruction, config: { backgroundImage } }) }),
   deleteLoginGeneration: (id: string) => request<void>(`/api/login-generations/${id}`, { method: 'DELETE' }),
   deleteLoginGenerations: (ids: string[]) => request<{ deleted: number }>('/api/login-generations/bulk-delete', { method: 'POST', body: JSON.stringify({ ids }) }),
 };

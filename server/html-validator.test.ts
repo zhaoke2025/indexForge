@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { validateHtml } from './html-validator.js';
+import { validateHtml, validateRequirementChecks } from './html-validator.js';
 
 describe('server HTML validator', () => {
   const template = fs.readFileSync('docs/测试母版-index.html', 'utf8');
@@ -15,6 +15,25 @@ describe('server HTML validator', () => {
     expect(result.errors).toContain('缺少 loadPage 函数');
   });
 
+  it('runs every enabled builtin requirement separately', () => {
+    const requirements = [
+      { id: 'R1', validationType: 'builtin', builtinValidator: 'h1-text' },
+      { id: 'R2', validationType: 'builtin', builtinValidator: 'tailwind-config' },
+      { id: 'R4', validationType: 'ai' },
+    ];
+    const broken = template.replace('tailwind.config', 'removed.config');
+    expect(validateRequirementChecks(broken, requirements)).toEqual([
+      { requirementId: 'R1', passed: true, detail: '内置校验通过' },
+      { requirementId: 'R2', passed: false, detail: '缺少 tailwind.config 配置块' },
+      { requirementId: 'R4', passed: true, detail: '已作为AI生成约束，未执行本地校验' },
+    ]);
+    expect(validateHtml(broken, { requirements }).errors).toEqual(['缺少 tailwind.config 配置块']);
+  });
+
+  it('does not silently pass a builtin requirement without a validator', () => {
+    expect(validateRequirementChecks(template, [{ id: 'custom', validationType: 'builtin' }])[0]).toEqual({ requirementId: 'custom', passed: false, detail: '未配置可执行的内置校验器' });
+  });
+
   it('does not treat a business menu named 供应商开发中心 as a placeholder', () => {
     expect(validateHtml(template.replace('企业运营管理平台', '供应商开发中心')).valid).toBe(true);
   });
@@ -24,27 +43,7 @@ describe('server HTML validator', () => {
     expect(result.errors).toContain('检测到占位文字：开发中');
   });
 
-  it('rejects a decorative user arrow when the dropdown dimension is enabled', () => {
-    const result = validateHtml(template, { dimensions: [{ id: 'userInfo', value: '头像+姓名+角色+下拉' }] });
-    expect(result.valid).toBe(false);
-    expect(result.errors).toContain('用户信息要求下拉菜单，但缺少 user-dropdown 菜单结构');
-  });
-
-  it('accepts a complete user dropdown interaction', () => {
-    const dropdown = `<button class="user-menu-trigger" type="button">下拉</button>
-      <div class="user-dropdown"><button>修改密码</button><button>退出登录</button></div>`;
-    const script = `<script>
-      const userDropdown = document.querySelector('.user-dropdown');
-      document.querySelector('.user-menu-trigger').addEventListener('click', () => userDropdown.classList.toggle('open'));
-      document.addEventListener('click', () => userDropdown.classList.remove('open'));
-    </script>`;
-    const html = template.replace('<div class="user-menu">', `<div class="user-menu">${dropdown}`).replace('</body>', `${script}</body>`);
-    expect(validateHtml(html, { dimensions: [{ id: 'userInfo', value: '头像+姓名+角色+下拉' }] }).valid).toBe(true);
-  });
-
-  it('rejects a remaining user area when the user dimension requests removal', () => {
-    const result = validateHtml(template, { dimensions: [{ id: 'userInfo', value: '移除用户' }] });
-    expect(result.valid).toBe(false);
-    expect(result.errors).toContain('用户信息维度要求移除用户，但顶栏仍存在用户区域');
+  it('does not perform backend validation for dimensions', () => {
+    expect(validateHtml(template, { requirements: [] }).valid).toBe(true);
   });
 });

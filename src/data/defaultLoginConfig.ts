@@ -6,7 +6,6 @@ export type LoginConfig = {
   backgroundType: '纯色' | '几何图案' | '图片通铺' | '左右分割';
   backgroundImage: string;
   colorMode: '继承系统主色' | '独立品牌色' | '纯黑白灰';
-  brandColor: string;
   cardStyle: '跟随系统风格' | '纯白实心' | '毛玻璃' | '半透明' | '深色实心';
   radius: '8px' | '12px' | '16px';
   brandMode: '纯文字标题' | '标题+标语' | '纯文字（无标语）';
@@ -32,7 +31,6 @@ export const defaultLoginConfig: LoginConfig = {
   backgroundType: '几何图案',
   backgroundImage: '',
   colorMode: '继承系统主色',
-  brandColor: '#2563EB',
   cardStyle: '跟随系统风格',
   radius: '12px',
   brandMode: '标题+标语',

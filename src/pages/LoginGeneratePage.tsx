@@ -29,7 +29,7 @@ export default function LoginGeneratePage({ config, onChange, dimensions, preset
   const [refreshKey, setRefreshKey] = useState(0);
   const [notice, setNotice] = useState('');
 
-  void dimensions; void presetId;
+  void presetId;
 
   const update = <K extends keyof LoginConfig>(key: K, value: LoginConfig[K]) => {
     onChange({ ...config, [key]: value });
@@ -56,14 +56,7 @@ export default function LoginGeneratePage({ config, onChange, dimensions, preset
   const generate = async () => {
     setGenerating(true);
     try {
-      const dimensionValues = dimensions.filter((item) => item.enabled).reduce<Record<string, unknown>>((values, item) => {
-        values[item.id] = item.value;
-        return values;
-      }, {});
-      const effectiveConfig = { ...config, ...dimensionValues, version: '', slogan: '' } as LoginConfig;
-      if (effectiveConfig.colorMode !== '独立品牌色') effectiveConfig.brandColor = '';
-      if (effectiveConfig.backgroundType !== '图片通铺') effectiveConfig.backgroundImage = '';
-      const result = await api.generateLogin({ config: effectiveConfig, instruction, sourceGenerationId: referenceRecord?.id });
+      const result = await api.generateLogin({ config: { ...config, version: '', slogan: '' }, instruction, sourceGenerationId: referenceRecord?.id });
       setRecord(result.generation); setHtml(result.generation.html); setViewMode('preview'); setRefreshKey((key) => key + 1);
       setNotice('login.html 已由 AI 生成并通过校验。');
       await onGenerated?.();
@@ -75,7 +68,7 @@ export default function LoginGeneratePage({ config, onChange, dimensions, preset
     if (!record || !refinementInstruction.trim()) return;
     setGenerating(true);
     try {
-      const result = await api.refineLogin(record.id, refinementInstruction);
+      const result = await api.refineLogin(record.id, refinementInstruction, config.backgroundImage);
       setRecord(result.generation); setHtml(result.generation.html); setRefinementInstruction(''); setViewMode('preview'); setRefreshKey((key) => key + 1);
       setNotice('已根据意见重新生成 login.html。');
       await onGenerated?.();
@@ -102,10 +95,11 @@ export default function LoginGeneratePage({ config, onChange, dimensions, preset
     URL.revokeObjectURL(url);
     setNotice('login.html 已开始下载。');
   };
+  const appliedDimensions = record?.dimensions.filter((item) => item.applied !== false) || [];
 
   return (
-    <div className="grid grid-cols-[460px_minmax(0,1fr)] gap-5 p-5">
-      <section className="space-y-4">
+    <div className="grid h-[calc(100vh-3.5rem)] grid-cols-[460px_minmax(0,1fr)] gap-5 overflow-hidden p-5">
+      <section className="min-h-0 space-y-4 overflow-y-auto pr-1">
         <div className="rounded border border-slate-200 bg-white">
           <div className="border-b border-slate-200 px-4 py-3">
             <h2 className="text-sm font-semibold text-slate-900">基础信息</h2>
@@ -116,29 +110,21 @@ export default function LoginGeneratePage({ config, onChange, dimensions, preset
               <span className="control-label">系统名称</span>
               <input className="text-input" value={config.systemName} onChange={(event) => update('systemName', event.target.value)} />
             </label>
-            {String(dimensions.find((item) => item.id === 'colorMode')?.value) === '独立品牌色' && <label>
-              <span className="control-label">独立品牌色</span>
-              <div className="grid grid-cols-[44px_minmax(0,1fr)] gap-2">
-                <input className="h-9 w-11 rounded border border-slate-300 bg-white p-1" type="color" value={config.brandColor} onChange={(event) => update('brandColor', event.target.value.toUpperCase())} />
-                <input className="text-input" value={config.brandColor} onChange={(event) => update('brandColor', event.target.value)} />
-              </div>
-            </label>}
           </div>
         </div>
 
         <div className="rounded border border-slate-200 bg-white">
           <div className="border-b border-slate-200 px-4 py-3">
             <h2 className="text-sm font-semibold text-slate-900">登录页变体维度</h2>
-            <p className="mt-1 text-xs text-slate-500">生成时自动读取“登录页维度”中启用项的默认值。</p>
+            <p className="mt-1 text-xs text-slate-500">所有启用项都会交给AI评估，由AI决定实际采用项和具体值。</p>
           </div>
           <div className="p-4">
-            <div className="flex flex-wrap gap-2">{dimensions.filter((item) => item.enabled).map((item) => <span className="rounded bg-slate-100 px-2 py-1 text-xs text-slate-600" key={item.id}>{item.name}：{String(item.value)}</span>)}</div>
-            {String(dimensions.find((item) => item.id === 'backgroundType')?.value) === '图片通铺' && (
-              <div className="mt-4 rounded border border-slate-200 bg-slate-50 p-3">
+            <div className="flex flex-wrap gap-2">{dimensions.filter((item) => item.enabled).map((item) => <span className="rounded bg-slate-100 px-2 py-1 text-xs text-slate-600" key={item.id}>{item.name}</span>)}</div>
+            <div className="mt-4 rounded border border-slate-200 bg-slate-50 p-3">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <div className="text-sm font-medium text-slate-900">背景图片</div>
-                    <div className="mt-1 text-xs text-slate-500">上传后生成的 login.html 会直接内嵌图片并按 cover 通铺。</div>
+                    <div className="text-sm font-medium text-slate-900">可选背景图片</div>
+                    <div className="mt-1 text-xs text-slate-500">AI选择“图片通铺”时使用，生成结果会按 cover 内嵌。</div>
                   </div>
                   {config.backgroundImage && (
                     <button className="secondary-button" onClick={() => update('backgroundImage', '')} type="button">
@@ -154,8 +140,7 @@ export default function LoginGeneratePage({ config, onChange, dimensions, preset
                     未上传图片时，生成源码会保留注释示例链接，管理员可手动替换。
                   </div>
                 )}
-              </div>
-            )}
+            </div>
           </div>
         </div>
 
@@ -171,6 +156,14 @@ export default function LoginGeneratePage({ config, onChange, dimensions, preset
           </button>
         </div>
         {record && <div className="rounded border border-slate-200 bg-white p-4">
+          <div className="text-sm font-semibold text-slate-900">实际应用维度（{appliedDimensions.length}）</div>
+          <div className="mt-2 max-h-40 space-y-2 overflow-auto">{appliedDimensions.map((item) => <div className="rounded bg-slate-50 px-3 py-2 text-xs" key={item.dimensionId}><b>{item.dimensionId}</b>：{String(item.value)}<div className="mt-1 text-slate-500">{item.reason}</div></div>)}</div>
+        </div>}
+        {record && <div className="rounded border border-slate-200 bg-white p-4">
+          <div className="text-sm font-semibold text-slate-900">硬性要求逐项检查</div>
+          <div className="mt-2 space-y-1">{record.requirementChecks.map((item) => <div className={`text-xs ${item.passed ? 'text-emerald-700' : 'text-red-700'}`} key={item.requirementId}>{item.passed ? '通过' : '失败'} · {item.requirementId}：{item.detail}</div>)}</div>
+        </div>}
+        {record && <div className="rounded border border-slate-200 bg-white p-4">
           <div className="text-sm font-semibold text-slate-900">继续调整</div>
           <textarea className="text-input mt-3 min-h-20" placeholder="例如：登录框向右移动，背景改为浅色几何图案。" value={refinementInstruction} onChange={(event) => setRefinementInstruction(event.target.value)} />
           <button className="secondary-button mt-3 w-full justify-center" disabled={generating || !refinementInstruction.trim()} onClick={refine} type="button"><RotateCw size={16} />根据意见重新生成</button>
@@ -178,8 +171,8 @@ export default function LoginGeneratePage({ config, onChange, dimensions, preset
         {notice && <div className="rounded border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">{notice}</div>}
       </section>
 
-      <section className="min-w-0 rounded border border-slate-200 bg-white">
-        <div className="flex h-12 items-center justify-between border-b border-slate-200 px-4">
+      <section className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded border border-slate-200 bg-white">
+        <div className="flex h-12 shrink-0 items-center justify-between border-b border-slate-200 px-4">
           <div>
             <h2 className="text-sm font-semibold text-slate-900">登录页结果</h2>
             <p className="text-xs text-slate-500">预览与源码输出</p>
@@ -205,7 +198,7 @@ export default function LoginGeneratePage({ config, onChange, dimensions, preset
             </button>
           </div>
         </div>
-        <div className="h-[calc(100vh-7.75rem)] overflow-hidden">
+        <div className="min-h-0 flex-1 overflow-hidden">
           {!html ? (
             <div className="flex h-full items-center justify-center bg-slate-50 text-sm text-slate-500">
               点击生成后在这里查看 login.html 预览。

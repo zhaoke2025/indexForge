@@ -15,6 +15,7 @@ describe('SQLite store', () => {
     expect(first.get<{ count: number }>('SELECT COUNT(*) AS count FROM dimensions')?.count).toBe(27);
     expect(first.get<{ count: number }>('SELECT COUNT(*) AS count FROM requirements')?.count).toBe(9);
     expect(first.get<{ count: number }>('SELECT COUNT(*) AS count FROM templates')?.count).toBe(0);
+    expect(first.get<{ default_value: string }>('SELECT default_value FROM dimensions LIMIT 1')?.default_value).toBe('null');
     const second = await Store.open();
     expect(second.get<{ count: number }>('SELECT COUNT(*) AS count FROM dimensions')?.count).toBe(27);
   });

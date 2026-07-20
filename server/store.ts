@@ -60,7 +60,7 @@ export class Store {
       this.db.run('DELETE FROM dimensions');
       seedDimensions.forEach((item, index) => this.db.run(
         'INSERT INTO dimensions VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)',
-        [item.id, item.name, item.groupName, item.description, item.valueType, JSON.stringify(item.defaultValue), JSON.stringify(item.options), index, created, created],
+        [item.id, item.name, item.groupName, item.description, item.valueType, 'null', JSON.stringify(item.options), index, created, created],
       ));
     });
   }
@@ -119,6 +119,8 @@ export class Store {
         id TEXT PRIMARY KEY, parent_id TEXT, source_generation_id TEXT NOT NULL,
         system_name TEXT NOT NULL, version_input TEXT, slogan TEXT, instruction TEXT,
         refinement_instruction TEXT, config_json TEXT NOT NULL, reference_html TEXT NOT NULL,
+        dimensions_snapshot_json TEXT NOT NULL DEFAULT '[]', decisions_json TEXT NOT NULL DEFAULT '[]',
+        requirements_snapshot_json TEXT NOT NULL DEFAULT '[]', requirement_checks_json TEXT NOT NULL DEFAULT '[]',
         validation_json TEXT NOT NULL, html TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL
       );
       CREATE TABLE IF NOT EXISTS login_dimensions AS SELECT * FROM dimensions WHERE 0;
@@ -140,7 +142,7 @@ export class Store {
         this.transaction(() => {
           missing.forEach((item, index) => this.db.run(
             'INSERT INTO dimensions VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)',
-            [item.id, item.name, item.groupName, item.description, item.valueType, JSON.stringify(item.defaultValue), JSON.stringify(item.options), maxSortOrder + index + 1, now, now],
+            [item.id, item.name, item.groupName, item.description, item.valueType, 'null', JSON.stringify(item.options), maxSortOrder + index + 1, now, now],
           ));
         });
       }
@@ -149,14 +151,26 @@ export class Store {
     if (!this.get('SELECT version FROM schema_migrations WHERE version=?', [2])) {
       this.transaction(() => {
         this.db.run('DELETE FROM login_dimensions');
-        seedLoginDimensions.forEach((item, index) => this.db.run('INSERT INTO login_dimensions VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)', [item.id, item.name, item.groupName, item.description, item.valueType, JSON.stringify(item.defaultValue), JSON.stringify(item.options), index, now, now]));
+        seedLoginDimensions.forEach((item, index) => this.db.run('INSERT INTO login_dimensions VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)', [item.id, item.name, item.groupName, item.description, item.valueType, 'null', JSON.stringify(item.options), index, now, now]));
         this.db.run('DELETE FROM login_requirements');
-        seedLoginRequirements.forEach((item, index) => this.db.run('INSERT INTO login_requirements VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)', [item[0], item[1], item[2], 'required', 'ai', null, index, now, now]));
+        seedLoginRequirements.forEach((item, index) => this.db.run('INSERT INTO login_requirements VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)', [item[0], item[1], item[2], item[3], item[4], item[5], index, now, now]));
         this.db.run('INSERT INTO schema_migrations VALUES (?, ?)', [2, now]);
       });
     }
-    if (!this.get('SELECT id FROM login_dimensions LIMIT 1')) seedLoginDimensions.forEach((item, index) => this.run('INSERT INTO login_dimensions VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)', [item.id, item.name, item.groupName, item.description, item.valueType, JSON.stringify(item.defaultValue), JSON.stringify(item.options), index, now, now]));
-    if (!this.get('SELECT id FROM login_requirements LIMIT 1')) seedLoginRequirements.forEach((item, index) => this.run('INSERT INTO login_requirements VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)', [item[0], item[1], item[2], 'required', 'ai', null, index, now, now]));
+    if (!this.get('SELECT id FROM login_dimensions LIMIT 1')) seedLoginDimensions.forEach((item, index) => this.run('INSERT INTO login_dimensions VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)', [item.id, item.name, item.groupName, item.description, item.valueType, 'null', JSON.stringify(item.options), index, now, now]));
+    if (!this.get('SELECT id FROM login_requirements LIMIT 1')) seedLoginRequirements.forEach((item, index) => this.run('INSERT INTO login_requirements VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)', [item[0], item[1], item[2], item[3], item[4], item[5], index, now, now]));
+    if (!this.get('SELECT version FROM schema_migrations WHERE version=?', [3])) {
+      const columns = new Set(this.all<{ name: string }>('PRAGMA table_info(login_generation_records)').map((item) => item.name));
+      this.transaction(() => {
+        for (const name of ['dimensions_snapshot_json', 'decisions_json', 'requirements_snapshot_json', 'requirement_checks_json']) {
+          if (!columns.has(name)) this.db.run(`ALTER TABLE login_generation_records ADD COLUMN ${name} TEXT NOT NULL DEFAULT '[]'`);
+        }
+        this.db.run("UPDATE dimensions SET default_value='null'");
+        this.db.run("UPDATE login_dimensions SET default_value='null'");
+        seedLoginRequirements.forEach((item) => this.db.run('UPDATE login_requirements SET validation_type=?,builtin_validator=? WHERE id=?', [item[4], item[5], item[0]]));
+        this.db.run('INSERT INTO schema_migrations VALUES (?, ?)', [3, now]);
+      });
+    }
     if (this.get('SELECT id FROM templates WHERE id=?', ['default'])) this.run('DELETE FROM templates WHERE id=?', ['default']);
   }
 }

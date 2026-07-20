@@ -71,7 +71,7 @@ function isDarkHex(hex: string) {
 }
 
 function resolvePrimary(config: LoginConfig, preset: StylePreset, dimensions?: DimensionConfig[]) {
-  if (config.colorMode === '独立品牌色') return config.brandColor || preset.primary;
+  if (config.colorMode === '独立品牌色') return preset.primary;
   if (config.colorMode === '纯黑白灰') return '#111827';
   const dimensionPrimary = getDimensionValue(dimensions, 'primary');
   return typeof dimensionPrimary === 'string' && dimensionPrimary.startsWith('#') ? dimensionPrimary : preset.primary;

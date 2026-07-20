@@ -1,7 +1,6 @@
 import fs from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { applyFunctionalDimensions, ensureReferencedElementAliases } from './html-features.js';
-import { validateHtml } from './html-validator.js';
 
 function hasClassElement(html: string, className: string) {
   return new RegExp(`<[^>]+class=["'][^"']*\\b${className}\\b[^"']*["'][^>]*>`, 'i').test(html);
@@ -25,7 +24,6 @@ describe('functional HTML dimensions', () => {
     expect(html).toContain('id="indexForgeUserDropdown"');
     expect(html).toContain('修改密码');
     expect(html).toContain('退出登录');
-    expect(validateHtml(html, { dimensions: dropdownDimension }).valid).toBe(true);
   });
 
   it('does not duplicate the dropdown when applied twice', () => {
@@ -51,7 +49,6 @@ describe('functional HTML dimensions', () => {
     expect(html).toContain('id="modifyPwdItem" type="button" hidden');
     expect(html).toContain('id="logoutItem" type="button" hidden');
     expect(html.indexOf('id="logoutItem" type="button" hidden')).toBeLessThan(html.indexOf('document.getElementById'));
-    expect(validateHtml(html, { dimensions: dropdownDimension }).valid).toBe(true);
   });
 
   it('repairs legacy records whose aliases were appended after the main script', () => {
@@ -81,7 +78,6 @@ describe('functional HTML dimensions', () => {
     expect(hasClassElement(html, 'avatar-circle')).toBe(true);
     expect(hasClassElement(html, 'user-name')).toBe(true);
     expect(hasClassElement(html, 'user-role')).toBe(true);
-    expect(validateHtml(html, { dimensions: dropdownDimension }).valid).toBe(true);
   });
 
   it('restores required user elements when AI removes only their classes', () => {
@@ -90,14 +86,15 @@ describe('functional HTML dimensions', () => {
       .replace('class="user-name"', 'class="account-name"')
       .replace('class="user-role"', 'class="account-role"');
     const html = applyFunctionalDimensions(source, dropdownDimension, template);
-    expect(validateHtml(html, { dimensions: dropdownDimension }).valid).toBe(true);
+    expect(hasClassElement(html, 'avatar-circle')).toBe(true);
+    expect(hasClassElement(html, 'user-name')).toBe(true);
+    expect(hasClassElement(html, 'user-role')).toBe(true);
   });
 
   it('removes the complete user area when requested by the dimension', () => {
     const dimensions = [{ id: 'userInfo', value: '移除用户' }];
     const html = applyFunctionalDimensions(template, dimensions);
     expect(hasClassElement(html, 'user-menu')).toBe(false);
-    expect(validateHtml(html, { dimensions }).valid).toBe(true);
   });
 
   it.each(userInfoCases)('applies user info shape %s', (value, hasAvatar, hasRole, hasDropdown) => {
@@ -107,6 +104,5 @@ describe('functional HTML dimensions', () => {
     expect(hasClassElement(html, 'user-role')).toBe(hasRole);
     expect(hasClassElement(html, 'user-dropdown')).toBe(hasDropdown);
     expect(hasClassElement(html, 'user-name')).toBe(true);
-    expect(validateHtml(html, { dimensions }).valid).toBe(true);
   });
 });

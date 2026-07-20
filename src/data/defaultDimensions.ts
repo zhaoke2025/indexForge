@@ -4,7 +4,7 @@ export type DimensionConfig = {
   group: string;
   enabled: boolean;
   description: string;
-  value: string | boolean;
+  value?: string | boolean;
   options?: string[];
   valueType?: 'text' | 'boolean' | 'single-select';
   sortOrder?: number;

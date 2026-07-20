@@ -23,7 +23,7 @@ export type HistoryRecord = {
   refinementInstruction?: string;
   systemType: string;
   toneSummary: string;
-  dimensions: Array<{ dimensionId: string; value: string | boolean; reason: string }>;
+  dimensions: Array<{ dimensionId: string; applied?: boolean; value: string | boolean | null; reason: string }>;
   menuConfig: MenuItemConfig[];
   requirementChecks: Array<{ requirementId: string; passed: boolean; detail: string }>;
   generatedAt: string;
@@ -42,6 +42,8 @@ export type LoginHistoryRecord = {
   instruction: string;
   refinementInstruction?: string;
   config: Record<string, unknown>;
+  dimensions: Array<{ dimensionId: string; applied?: boolean; value: string | boolean | null; reason: string }>;
+  requirementChecks: Array<{ requirementId: string; passed: boolean; detail: string }>;
   generatedAt: string;
   html: string;
   status: string;

@@ -16,6 +16,7 @@ describe('AI HTML helpers', () => {
       version: 'V1.0',
       instruction: '二级菜单左侧内边距改为64px',
       dimensions: [],
+      decisions: [],
       requirements: [],
       baseHtml: '<!DOCTYPE html><html></html>',
       refining: true,
@@ -30,6 +31,14 @@ describe('AI HTML helpers', () => {
   it('requires exact user-provided values', () => {
     expect(htmlSystemPrompt).toContain('用户要求64px就必须输出64px');
     expect(htmlSystemPrompt).toContain('继续调整禁止原样返回上一版HTML');
+  });
+
+  it('treats the template as a structural framework and dimensions as AI decisions', () => {
+    const prompt = buildHtmlPrompt({ systemName: '测试系统', version: '', instruction: '', dimensions: [], decisions: [{ dimensionId: 'mode', value: '深色', reason: '适合监控场景' }], requirements: [], baseHtml: '<!DOCTYPE html><html></html>', refining: false });
+    expect(prompt).toContain('不含默认值');
+    expect(prompt).toContain('AI已确定的本次维度方案');
+    expect(htmlSystemPrompt).toContain('母版视觉样式不是默认方案');
+    expect(htmlSystemPrompt).not.toContain('维度默认值');
   });
 
   it('builds a focused repair prompt', () => {
