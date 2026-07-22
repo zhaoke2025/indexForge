@@ -124,6 +124,28 @@ export function ensureReferencedElementAliases(html: string) {
   return injectAfterBody(withoutAliases, aliases);
 }
 
+export function ensureSidebarToggleAccessible(html: string) {
+  if (!/\bid=(["'])sidebarToggleBtn\1/i.test(html)) return html;
+
+  const marker = 'indexforge-sidebar-toggle-container';
+  const marked = html.replace(
+    /<([a-z][\w:-]*)\b([^>]*)>\s*(?=<button\b[^>]*\bid=(["'])sidebarToggleBtn\3)/i,
+    (opening, tag: string, attributes: string) => {
+      if (new RegExp(`\\b${marker}\\b`).test(attributes)) return opening;
+      if (/\bclass=(["'])([^"']*)\1/i.test(attributes)) {
+        return opening.replace(/\bclass=(["'])([^"']*)\1/i, (_className: string, quote: string, classes: string) => `class=${quote}${classes} ${marker}${quote}`);
+      }
+      return opening.replace(`<${tag}`, `<${tag} class="${marker}"`);
+    },
+  );
+  if (marked === html || marked.includes('/* IndexForge sidebar toggle accessibility */')) return marked;
+
+  return injectBefore(marked, '</head>', `<style>
+        /* IndexForge sidebar toggle accessibility */
+        .app-sidebar.sidebar-collapsed .${marker} { display: flex !important; }
+    </style>`);
+}
+
 export function applyFunctionalDimensions(html: string, dimensions: FeatureDimension[], fallbackHtml = '') {
   const userInfo = dimensions.find((item) => item.id === 'userInfo')?.value;
   if (userInfo === '移除用户') {

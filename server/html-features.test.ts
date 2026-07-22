@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { applyFunctionalDimensions, ensureReferencedElementAliases } from './html-features.js';
+import { applyFunctionalDimensions, ensureReferencedElementAliases, ensureSidebarToggleAccessible } from './html-features.js';
 
 function hasClassElement(html: string, className: string) {
   return new RegExp(`<[^>]+class=["'][^"']*\\b${className}\\b[^"']*["'][^>]*>`, 'i').test(html);
@@ -63,6 +63,17 @@ describe('functional HTML dimensions', () => {
     expect(repaired.indexOf('id="modifyPwdItem" type="button" hidden')).toBeLessThan(repaired.indexOf('<script>'));
     expect(repaired.indexOf('id="logoutItem" type="button" hidden')).toBeLessThan(repaired.indexOf('<script>'));
     expect(repaired.match(/id="userDropdown"/g)).toHaveLength(1);
+  });
+
+  it('keeps a bottom sidebar toggle accessible after the sidebar collapses', () => {
+    const source = `<html><head><style>.sidebar-collapsed .sidebar-footer { display: none; }</style></head><body>
+      <aside class="app-sidebar"><div class="sidebar-footer"><button class="sidebar-toggle-btn" id="sidebarToggleBtn">收起</button></div></aside>
+    </body></html>`;
+    const repaired = ensureSidebarToggleAccessible(source);
+    const twice = ensureSidebarToggleAccessible(repaired);
+    expect(repaired).toContain('class="sidebar-footer indexforge-sidebar-toggle-container"');
+    expect(repaired).toContain('.app-sidebar.sidebar-collapsed .indexforge-sidebar-toggle-container { display: flex !important; }');
+    expect(twice.match(/IndexForge sidebar toggle accessibility/g)).toHaveLength(1);
   });
 
   it('places the dropdown trigger after the avatar and user information', () => {

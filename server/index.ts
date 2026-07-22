@@ -9,7 +9,7 @@ import helmet from 'helmet';
 import OpenAI from 'openai';
 import { buildHtmlPrompt, buildRepairPrompt, extractCompleteHtml, htmlSystemPrompt } from './ai-html.js';
 import { appliedDimensionDecisions, buildDimensionDecisionPrompt, parseDimensionPlan, type DimensionDecision, type DimensionDefinition } from './dimension-decisions.js';
-import { applyFunctionalDimensions, ensureReferencedElementAliases } from './html-features.js';
+import { applyFunctionalDimensions, ensureReferencedElementAliases, ensureSidebarToggleAccessible } from './html-features.js';
 import { validateHtml, validateRequirementChecks } from './html-validator.js';
 import { buildLoginPrompt, buildLoginRepairPrompt, extractLoginHtml, loginSystemPrompt, validateLoginHtml, validateLoginRequirementChecks } from './login-ai.js';
 import { Store, type Row } from './store.js';
@@ -81,7 +81,7 @@ function loginRequirements() { return store.all<RequirementRow>('SELECT * FROM l
 function dimensionDto(row: DimensionRow) { return { id: row.id, name: row.name, group: row.group_name, description: row.description, valueType: row.value_type, options: parseJson<string[]>(row.options_json, []), enabled: bool(row.enabled), sortOrder: Number(row.sort_order) }; }
 function requirementDto(row: RequirementRow) { return { id: row.id, name: row.name, description: row.description, level: row.level, validationType: row.validation_type, builtinValidator: row.builtin_validator || undefined, enabled: bool(row.enabled), sortOrder: Number(row.sort_order) }; }
 function templateDto(row: TemplateRow) { const saved = parseJson<ReturnType<typeof validateHtml> | null>(row.validation_json, null); return { id: row.id, name: row.name, html: row.html, validation: saved && typeof saved.valid === 'boolean' ? saved : validateHtml(row.html), isCurrent: bool(row.is_current) }; }
-function generationDto(row: GenerationRow) { return { id: row.id, parentId: row.parent_id || undefined, systemName: row.system_name, version: row.version_input || '', displayName: row.display_name, instruction: row.instruction || '', refinementInstruction: row.refinement_instruction || '', systemType: row.system_type || '', toneSummary: row.tone_summary || '', dimensions: parseJson(row.decisions_json, []), menuConfig: parseJson(row.menu_json, []), requirementChecks: parseJson(row.requirement_checks_json, []), validation: parseJson(row.validation_json, { valid: false, errors: [], warnings: [] }), html: ensureReferencedElementAliases(row.html), status: row.status, generatedAt: row.created_at }; }
+function generationDto(row: GenerationRow) { return { id: row.id, parentId: row.parent_id || undefined, systemName: row.system_name, version: row.version_input || '', displayName: row.display_name, instruction: row.instruction || '', refinementInstruction: row.refinement_instruction || '', systemType: row.system_type || '', toneSummary: row.tone_summary || '', dimensions: parseJson(row.decisions_json, []), menuConfig: parseJson(row.menu_json, []), requirementChecks: parseJson(row.requirement_checks_json, []), validation: parseJson(row.validation_json, { valid: false, errors: [], warnings: [] }), html: ensureReferencedElementAliases(ensureSidebarToggleAccessible(row.html)), status: row.status, generatedAt: row.created_at }; }
 function loginGenerationDto(row: GenerationRow) { return { id: row.id, parentId: row.parent_id || undefined, sourceGenerationId: row.source_generation_id, systemName: row.system_name, version: row.version_input || '', slogan: row.slogan || '', instruction: row.instruction || '', refinementInstruction: row.refinement_instruction || '', config: parseJson(row.config_json, {}), dimensions: parseJson(row.decisions_json, []), requirementChecks: parseJson(row.requirement_checks_json, []), validation: parseJson(row.validation_json, { valid: false, errors: [], warnings: [] }), html: row.html, status: row.status, generatedAt: row.created_at }; }
 
 function validateId(value: unknown) {
@@ -226,12 +226,13 @@ async function requestAi(input: { systemName: string; version: string; instructi
     const checkErrors = requirementChecks.filter((item) => !item.passed).map((item) => `${item.requirementId}：${item.detail}`);
     return { validation: { ...validation, valid: validation.valid && checkErrors.length === 0, errors: [...validation.errors, ...checkErrors.filter((error) => !validation.errors.includes(error))] }, requirementChecks };
   };
-  const initialHtml = applyFunctionalDimensions(await createHtml(buildHtmlPrompt({ systemName: input.systemName, version: input.version, instruction: input.instruction, dimensions: activeDimensions, decisions: selectedDecisions, requirements: activeRequirements, baseHtml, refining: Boolean(input.current) })), appliedDimensions, baseHtml);
+  const applyFeatures = (html: string) => ensureSidebarToggleAccessible(applyFunctionalDimensions(html, appliedDimensions, baseHtml));
+  const initialHtml = applyFeatures(await createHtml(buildHtmlPrompt({ systemName: input.systemName, version: input.version, instruction: input.instruction, dimensions: activeDimensions, decisions: selectedDecisions, requirements: activeRequirements, baseHtml, refining: Boolean(input.current) })));
   const repaired = await repairUntilValid({
     initialHtml,
     inspect,
     maxAttempts: maxRepairAttempts,
-    repair: async (html, errors) => applyFunctionalDimensions(await createHtml(buildRepairPrompt(html, errors, selectedDecisions)), appliedDimensions, baseHtml),
+    repair: async (html, errors) => applyFeatures(await createHtml(buildRepairPrompt(html, errors, selectedDecisions))),
   });
   const { html, inspection: inspected } = repaired;
   if (!inspected.validation.valid) {
