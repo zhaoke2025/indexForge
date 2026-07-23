@@ -171,6 +171,49 @@ export class Store {
         this.db.run('INSERT INTO schema_migrations VALUES (?, ?)', [3, now]);
       });
     }
+    if (!this.get('SELECT version FROM schema_migrations WHERE version=?', [4])) {
+      this.transaction(() => {
+        seedRequirements.slice(0, 3).forEach((item, index) => {
+          if (!this.get('SELECT id FROM requirements WHERE id=?', [item[0]])) {
+            this.db.run('INSERT INTO requirements VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)', [item[0], item[1], item[2], item[3], item[4], item[5], index, now, now]);
+          }
+          this.db.run(
+            'UPDATE requirements SET name=?,description=?,level=?,validation_type=?,builtin_validator=?,enabled=1,updated_at=? WHERE id=?',
+            [item[1], item[2], item[3], item[4], item[5], now, item[0]],
+          );
+        });
+        this.db.run('INSERT INTO schema_migrations VALUES (?, ?)', [4, now]);
+      });
+    }
+    if (!this.get('SELECT version FROM schema_migrations WHERE version=?', [5])) {
+      this.transaction(() => {
+        seedRequirements.slice(3).forEach((item, index) => {
+          if (!this.get('SELECT id FROM requirements WHERE id=?', [item[0]])) {
+            this.db.run('INSERT INTO requirements VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)', [item[0], item[1], item[2], item[3], item[4], item[5], index + 3, now, now]);
+          }
+          this.db.run(
+            'UPDATE requirements SET name=?,description=?,level=?,validation_type=?,builtin_validator=?,enabled=1,sort_order=?,updated_at=? WHERE id=?',
+            [item[1], item[2], item[3], item[4], item[5], index + 3, now, item[0]],
+          );
+        });
+        this.db.run('INSERT INTO schema_migrations VALUES (?, ?)', [5, now]);
+      });
+    }
+    if (!this.get('SELECT version FROM schema_migrations WHERE version=?', [6])) {
+      const layout = seedLoginDimensions.find((item) => item.id === 'layout')!;
+      const titleRequirement = seedLoginRequirements.find((item) => item[0] === 'LR1')!;
+      this.transaction(() => {
+        if (!this.get('SELECT id FROM login_dimensions WHERE id=?', [layout.id])) {
+          this.db.run('INSERT INTO login_dimensions VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?)', [layout.id, layout.name, layout.groupName, layout.description, layout.valueType, 'null', JSON.stringify(layout.options), now, now]);
+        }
+        this.db.run('UPDATE login_dimensions SET name=?,group_name=?,description=?,value_type=?,options_json=?,enabled=1,updated_at=? WHERE id=?', [layout.name, layout.groupName, layout.description, layout.valueType, JSON.stringify(layout.options), now, layout.id]);
+        if (!this.get('SELECT id FROM login_requirements WHERE id=?', [titleRequirement[0]])) {
+          this.db.run('INSERT INTO login_requirements VALUES (?, ?, ?, ?, ?, ?, 1, 0, ?, ?)', [titleRequirement[0], titleRequirement[1], titleRequirement[2], titleRequirement[3], titleRequirement[4], titleRequirement[5], now, now]);
+        }
+        this.db.run('UPDATE login_requirements SET name=?,description=?,level=?,validation_type=?,builtin_validator=?,enabled=1,updated_at=? WHERE id=?', [titleRequirement[1], titleRequirement[2], titleRequirement[3], titleRequirement[4], titleRequirement[5], now, titleRequirement[0]]);
+        this.db.run('INSERT INTO schema_migrations VALUES (?, ?)', [6, now]);
+      });
+    }
     if (this.get('SELECT id FROM templates WHERE id=?', ['default'])) this.run('DELETE FROM templates WHERE id=?', ['default']);
   }
 }

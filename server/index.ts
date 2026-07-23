@@ -14,6 +14,7 @@ import { validateHtml, validateRequirementChecks } from './html-validator.js';
 import { buildLoginPrompt, buildLoginRepairPrompt, extractLoginHtml, loginSystemPrompt, validateLoginHtml, validateLoginRequirementChecks } from './login-ai.js';
 import { Store, type Row } from './store.js';
 import { seedLoginDimensions, seedLoginRequirements } from './defaults.js';
+import { enforcedIndexRequirements, protectedIndexRequirementIds } from './index-requirements.js';
 import { repairUntilValid } from './repair-loop.js';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
@@ -123,17 +124,19 @@ app.post('/api/dimensions/reset', (_req, res) => { store.resetDimensions(); res.
 app.get('/api/requirements', (_req, res) => res.json({ requirements: requirements() }));
 app.post('/api/requirements', (req, res) => {
   const id = validateId(req.body?.id); const name = String(req.body?.name || '').trim(); if (!name) return void res.status(400).json({ error: '要求名称不能为空' });
+  if (protectedIndexRequirementIds.has(id)) return void res.status(409).json({ error: 'R1-R3 是线上内置硬性要求，不能新建或覆盖' });
   if (store.get('SELECT id FROM requirements WHERE id=?', [id])) return void res.status(409).json({ error: '要求ID已存在' });
   const created = now(); store.run('INSERT INTO requirements VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [id, name, String(req.body?.description || ''), String(req.body?.level || 'required'), String(req.body?.validationType || 'ai'), req.body?.builtinValidator || null, bool(req.body?.enabled) ? 1 : 0, requirements().length, created, created]);
   res.status(201).json({ requirement: requirements().find((item) => item.id === id) });
 });
 app.put('/api/requirements/:id', (req, res) => {
   const id = req.params.id; if (!store.get('SELECT id FROM requirements WHERE id=?', [id])) return void res.status(404).json({ error: '要求不存在' });
+  if (protectedIndexRequirementIds.has(id)) return void res.status(409).json({ error: 'R1-R3 是线上内置硬性要求，不能编辑或停用' });
   const name = String(req.body?.name || '').trim(); if (!name) return void res.status(400).json({ error: '要求名称不能为空' });
   store.run('UPDATE requirements SET name=?,description=?,level=?,validation_type=?,builtin_validator=?,enabled=?,updated_at=? WHERE id=?', [name, String(req.body?.description || ''), String(req.body?.level || 'required'), String(req.body?.validationType || 'ai'), req.body?.builtinValidator || null, bool(req.body?.enabled) ? 1 : 0, now(), id]);
   res.json({ requirement: requirements().find((item) => item.id === id) });
 });
-app.delete('/api/requirements/:id', (req, res) => { if (!store.get('SELECT id FROM requirements WHERE id=?', [req.params.id])) return void res.status(404).json({ error: '要求不存在' }); store.run('DELETE FROM requirements WHERE id=?', [req.params.id]); res.status(204).end(); });
+app.delete('/api/requirements/:id', (req, res) => { if (!store.get('SELECT id FROM requirements WHERE id=?', [req.params.id])) return void res.status(404).json({ error: '要求不存在' }); if (protectedIndexRequirementIds.has(req.params.id)) return void res.status(409).json({ error: 'R1-R3 是线上内置硬性要求，不能删除' }); store.run('DELETE FROM requirements WHERE id=?', [req.params.id]); res.status(204).end(); });
 app.post('/api/requirements/reorder', (req, res) => { const ids: string[] = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : []; store.transaction(() => ids.forEach((id: string, index: number) => store.run('UPDATE requirements SET sort_order=? WHERE id=?', [index, id]))); res.json({ requirements: requirements() }); });
 app.post('/api/requirements/reset', (_req, res) => { store.resetRequirements(); res.json({ requirements: requirements() }); });
 
@@ -199,7 +202,7 @@ function displayName(systemName: string, version: string) {
 
 async function requestAi(input: { systemName: string; version: string; instruction: string; template: TemplateRow; current?: GenerationRow }) {
   const activeDimensions = dimensions().filter((item) => item.enabled);
-  const activeRequirements = requirements().filter((item) => item.enabled);
+  const activeRequirements = enforcedIndexRequirements(requirements());
   const activeDimensionIds = new Set(activeDimensions.map((item) => item.id));
   const previousDecisions = input.current ? parseJson<DimensionDecision[]>(input.current.decisions_json, []).filter((item) => activeDimensionIds.has(item.dimensionId)) : undefined;
   const plan = await requestDimensionPlan({ systemName: input.systemName, instruction: input.instruction, dimensions: activeDimensions, page: 'index', previous: previousDecisions });
@@ -221,8 +224,9 @@ async function requestAi(input: { systemName: string; version: string; instructi
     return extractCompleteHtml(completion.choices[0]?.message?.content || '');
   };
   const inspect = (candidate: string) => {
-    const validation = validateHtml(candidate, { requirements: activeRequirements });
-    const requirementChecks = validateRequirementChecks(candidate, activeRequirements);
+    const validationContext = { requirements: activeRequirements, systemName: input.systemName };
+    const validation = validateHtml(candidate, validationContext);
+    const requirementChecks = validateRequirementChecks(candidate, activeRequirements, validationContext);
     const checkErrors = requirementChecks.filter((item) => !item.passed).map((item) => `${item.requirementId}：${item.detail}`);
     return { validation: { ...validation, valid: validation.valid && checkErrors.length === 0, errors: [...validation.errors, ...checkErrors.filter((error) => !validation.errors.includes(error))] }, requirementChecks };
   };

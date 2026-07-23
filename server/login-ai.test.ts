@@ -27,6 +27,17 @@ describe('登录页AI生成约束', () => {
     expect(prompt).toContain('#1A3A5C');
   });
 
+  it('requires a separate left brand panel for a right-aligned login card', () => {
+    const prompt = buildLoginPrompt({
+      config: { systemName: '医疗管理系统', layout: '偏右' },
+      instruction: '',
+      referenceHtml: '<!DOCTYPE html><html></html>',
+    });
+    expect(prompt).toContain('data-login-brand-panel');
+    expect(prompt).toContain('data-login-card');
+    expect(prompt).toContain('系统标题必须位于登录卡片外');
+  });
+
   it('只执行已配置的默认内置要求，不额外校验页面维度', () => {
     const html = '<!DOCTYPE html><html><style>body{background:linear-gradient(#fff,#000)}</style><body><form><input type="password"></form><script>const menuConfig=[]</script></body></html>';
     const result = validateLoginHtml(html, { loginMethod: '账号密码+图形验证码', captchaMode: '随机字母', demoAccount: '不预填' });
@@ -68,6 +79,24 @@ describe('登录页AI生成约束', () => {
   it('finds a semantic system title inside nested div containers', () => {
     const html = '<!DOCTYPE html><html><body><div class="login-wrapper"><div class="login-card"><div class="login-header"><div class="system-title">医疗管理系统</div><div class="welcome-text">欢迎登录</div></div><form></form></div></div></body></html>';
     expect(validateLoginRequirementChecks(html, { systemName: '医疗管理系统' }, [
+      { id: 'LR1', validationType: 'builtin', builtinValidator: 'login-title' },
+    ])[0]).toEqual({ requirementId: 'LR1', passed: true, detail: '内置校验通过' });
+  });
+
+  it('rejects a right-aligned layout whose system title remains inside the login card', () => {
+    const html = '<!DOCTYPE html><html><body><main><section data-login-card><div class="login-header"><div class="system-title">医疗管理系统</div><div>欢迎回来</div></div><form></form></section></main></body></html>';
+    expect(validateLoginRequirementChecks(html, { systemName: '医疗管理系统', layout: '偏右' }, [
+      { id: 'LR1', validationType: 'builtin', builtinValidator: 'login-title' },
+    ])[0]).toEqual({
+      requirementId: 'LR1',
+      passed: false,
+      detail: '偏右布局时，系统标题必须位于登录卡片外的左侧品牌区',
+    });
+  });
+
+  it('accepts a right-aligned layout with a separate left brand panel', () => {
+    const html = '<!DOCTYPE html><html><body><main><section data-login-brand-panel><h1>医疗管理系统</h1></section><section data-login-card><div>欢迎回来</div><form></form></section></main></body></html>';
+    expect(validateLoginRequirementChecks(html, { systemName: '医疗管理系统', layout: '偏右' }, [
       { id: 'LR1', validationType: 'builtin', builtinValidator: 'login-title' },
     ])[0]).toEqual({ requirementId: 'LR1', passed: true, detail: '内置校验通过' });
   });

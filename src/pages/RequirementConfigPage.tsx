@@ -5,6 +5,7 @@ import type { RequirementRule } from '../data/defaultRequirements';
 
 type Props = { requirements: RequirementRule[]; onReload: () => Promise<void>; scope?: 'index' | 'login' };
 const empty: RequirementRule = { id: '', name: '', description: '', level: 'required', enabled: true, validationType: 'ai' };
+const protectedIndexRequirementIds = new Set(['R1', 'R2', 'R3']);
 
 export default function RequirementConfigPage({ requirements, onReload, scope = 'index' }: Props) {
   const [editing, setEditing] = useState<RequirementRule | null>(null); const [creating, setCreating] = useState(false); const [notice, setNotice] = useState(''); const [formError, setFormError] = useState('');
@@ -40,10 +41,10 @@ export default function RequirementConfigPage({ requirements, onReload, scope = 
         <div className="flex justify-end gap-2 border-t border-slate-200 px-5 py-4"><button className="secondary-button" onClick={() => setEditing(null)} type="button">取消</button><button className="primary-button" onClick={save} type="button">保存</button></div>
       </section>
     </div>}
-    <div className="grid grid-cols-2 gap-3">{requirements.map((rule, index) => <div key={rule.id} className="rounded border border-slate-200 bg-white p-4">
-      <div className="flex items-start justify-between"><div><div className="font-semibold">{rule.id} · {rule.name}</div><p className="mt-2 text-sm text-slate-600">{rule.description}</p></div><button className={`rounded px-2 py-1 text-xs ${rule.enabled ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`} onClick={() => toggle(rule)}>{rule.enabled ? '启用' : '停用'}</button></div>
+    <div className="grid grid-cols-2 gap-3">{requirements.map((rule, index) => { const locked = scope === 'index' && protectedIndexRequirementIds.has(rule.id); return <div key={rule.id} className="rounded border border-slate-200 bg-white p-4">
+      <div className="flex items-start justify-between"><div><div className="font-semibold">{rule.id} · {rule.name}</div><p className="mt-2 text-sm text-slate-600">{rule.description}</p></div><button className={`rounded px-2 py-1 text-xs ${rule.enabled ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'} disabled:cursor-not-allowed disabled:opacity-60`} disabled={locked} onClick={() => toggle(rule)} title={locked ? '线上内置硬性要求不可停用' : undefined}>{rule.enabled ? '启用' : '停用'}</button></div>
       <div className="mt-3 flex items-center gap-2 text-xs text-slate-500"><span>顺序 {index + 1}</span><span>·</span><span>{rule.level}</span><span>·</span><span>{rule.validationType === 'builtin' ? '内置+AI' : 'AI检查'}</span></div>
-      <div className="mt-3 flex gap-2"><button disabled={index === 0} className="secondary-button" onClick={() => move(index, -1)}><ArrowUp size={14} /></button><button disabled={index === requirements.length - 1} className="secondary-button" onClick={() => move(index, 1)}><ArrowDown size={14} /></button><button className="secondary-button" onClick={() => { setCreating(false); setFormError(''); setEditing({ ...rule }); }}><Pencil size={14} />编辑</button><button className="secondary-button text-red-600" onClick={() => remove(rule.id)}><Trash2 size={14} />删除</button></div>
-    </div>)}</div>
+      <div className="mt-3 flex gap-2"><button disabled={index === 0} className="secondary-button" onClick={() => move(index, -1)}><ArrowUp size={14} /></button><button disabled={index === requirements.length - 1} className="secondary-button" onClick={() => move(index, 1)}><ArrowDown size={14} /></button><button className="secondary-button" disabled={locked} onClick={() => { setCreating(false); setFormError(''); setEditing({ ...rule }); }} title={locked ? '线上内置硬性要求不可编辑' : undefined}><Pencil size={14} />编辑</button><button className="secondary-button text-red-600" disabled={locked} onClick={() => remove(rule.id)} title={locked ? '线上内置硬性要求不可删除' : undefined}><Trash2 size={14} />删除</button></div>
+    </div>; })}</div>
   </div>;
 }

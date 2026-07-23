@@ -495,7 +495,7 @@ cp data/indexforge.db backups/indexforge-$(date +%F-%H%M%S).db
 ### 阶段一：数据库与规则CRUD
 
 - 引入SQLite和迁移机制。
-- 初始化27个默认维度和9条默认要求。
+- 初始化27个默认维度和11条默认要求。
 - 实现维度CRUD、启停和排序。
 - 实现硬性要求CRUD、启停和排序。
 - 前端配置页面改为调用API。

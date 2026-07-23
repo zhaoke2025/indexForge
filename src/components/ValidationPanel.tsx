@@ -9,7 +9,7 @@ export default function ValidationPanel({ validation }: Props) {
   if (!validation) {
     return (
       <div className="rounded border border-slate-200 bg-white p-4 text-sm text-slate-500">
-        生成后会显示 9 条硬性要求校验结果。
+        生成后会显示 11 条硬性要求校验结果。
       </div>
     );
   }
