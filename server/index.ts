@@ -15,6 +15,7 @@ import { buildLoginPrompt, buildLoginRepairPrompt, extractLoginHtml, loginSystem
 import { Store, type Row } from './store.js';
 import { seedLoginDimensions, seedLoginRequirements } from './defaults.js';
 import { enforcedIndexRequirements, protectedIndexRequirementIds } from './index-requirements.js';
+import { createIntegrationAuth } from './integration-auth.js';
 import { repairUntilValid } from './repair-loop.js';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
@@ -32,6 +33,11 @@ const port = Number(process.env.API_PORT || process.env.PORT || 8787);
 const isProduction = process.env.NODE_ENV === 'production';
 const allowedOrigins = (process.env.CORS_ORIGINS || '').split(',').map((value) => value.trim()).filter(Boolean);
 const maxRepairAttempts = Math.min(5, Math.max(1, Number(process.env.AI_REPAIR_MAX_ATTEMPTS || 3)));
+const integrationAuth = createIntegrationAuth({
+  username: process.env.INTEGRATION_API_USERNAME || '',
+  password: process.env.INTEGRATION_API_PASSWORD || '',
+  tokenTtlSeconds: Number(process.env.INTEGRATION_TOKEN_TTL_SECONDS || 7_200),
+});
 
 if (process.env.TRUST_PROXY) app.set('trust proxy', Number(process.env.TRUST_PROXY) || process.env.TRUST_PROXY);
 app.disable('x-powered-by');
@@ -50,8 +56,20 @@ const aiLimiter = rateLimit({
   limit: Number(process.env.API_RATE_LIMIT_MAX || 20), standardHeaders: 'draft-8', legacyHeaders: false,
   message: { error: '请求过于频繁，请稍后重试' },
 });
+const integrationLoginLimiter = rateLimit({
+  windowMs: 15 * 60_000,
+  limit: 10,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { error: '登录尝试过于频繁，请稍后重试' },
+});
 const asyncRoute = (handler: (req: express.Request, res: express.Response) => Promise<void>) =>
   (req: express.Request, res: express.Response, next: express.NextFunction) => { handler(req, res).catch(next); };
+const requireIntegrationToken: express.RequestHandler = (req, res, next) => {
+  if (!integrationAuth.configured) return void res.status(503).json({ error: '软著系统对接账号尚未配置' });
+  if (!integrationAuth.authorize(String(req.headers.authorization || ''))) return void res.status(401).json({ error: 'Token无效或已过期' });
+  next();
+};
 
 function slug(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') || `menu-${Date.now()}`;
@@ -99,6 +117,12 @@ function dimensionValue(body: Record<string, unknown>) {
 }
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, hasApiKey: Boolean(process.env.OPENAI_API_KEY), model: process.env.OPENAI_MODEL || 'deepseek-chat', database: true }));
+app.post('/api/integration/auth/login', integrationLoginLimiter, (req, res) => {
+  if (!integrationAuth.configured) return void res.status(503).json({ error: '软著系统对接账号尚未配置' });
+  const result = integrationAuth.login(String(req.body?.username || ''), String(req.body?.password || ''));
+  if (!result) return void res.status(401).json({ error: '账号或密码错误' });
+  res.json(result);
+});
 
 app.get('/api/dimensions', (_req, res) => res.json({ dimensions: dimensions() }));
 app.post('/api/dimensions', (req, res) => {
@@ -252,12 +276,14 @@ async function saveGeneration(input: { systemName: string; version: string; inst
   return generationDto(store.get<GenerationRow>('SELECT * FROM generation_records WHERE id=?', [id])!);
 }
 
-app.post('/api/generations', aiLimiter, asyncRoute(async (req, res) => {
+const generateIndexRoute = async (req: express.Request, res: express.Response) => {
   const systemName = String(req.body?.systemName || '').trim().slice(0, 100); if (!systemName) return void res.status(400).json({ error: '系统名称不能为空' });
   const template = store.get<TemplateRow>('SELECT * FROM templates WHERE is_current=1'); if (!template) return void res.status(409).json({ error: '请先上传母版并将其设为当前母版' });
   const version = String(req.body?.version || '').trim().slice(0, 30); const instruction = String(req.body?.instruction || '').trim().slice(0, 2000);
   const ai = await requestAi({ systemName, version, instruction, template }); res.status(201).json({ generation: await saveGeneration({ systemName, version, instruction, template, ai }) });
-}));
+};
+app.post('/api/generations', aiLimiter, asyncRoute(generateIndexRoute));
+app.post('/api/integration/generations', requireIntegrationToken, aiLimiter, asyncRoute(generateIndexRoute));
 app.post('/api/generations/:id/refine', aiLimiter, asyncRoute(async (req, res) => {
   const recordId = String(req.params.id); const current = store.get<GenerationRow>('SELECT * FROM generation_records WHERE id=?', [recordId]); if (!current) return void res.status(404).json({ error: '生成记录不存在' });
   const instruction = String(req.body?.instruction || '').trim().slice(0, 2000); if (!instruction) return void res.status(400).json({ error: '调整意见不能为空' });
@@ -317,7 +343,7 @@ function saveLoginGeneration(input: { source: GenerationRow; config: Record<stri
   return loginGenerationDto(store.get<GenerationRow>('SELECT * FROM login_generation_records WHERE id=?', [id])!);
 }
 
-app.post('/api/login-generations', aiLimiter, asyncRoute(async (req, res) => {
+const generateLoginRoute = async (req: express.Request, res: express.Response) => {
   const submitted = req.body?.config && typeof req.body.config === 'object' ? req.body.config as Record<string, unknown> : {};
   const sourceId = String(req.body?.sourceGenerationId || '');
   const source = sourceId ? store.get<GenerationRow>('SELECT * FROM generation_records WHERE id=?', [sourceId]) : store.get<GenerationRow>('SELECT * FROM generation_records ORDER BY created_at DESC LIMIT 1');
@@ -330,7 +356,9 @@ app.post('/api/login-generations', aiLimiter, asyncRoute(async (req, res) => {
   if (config.backgroundType !== '图片通铺') delete config.backgroundImage;
   const ai = await requestLoginAi({ config, instruction, referenceHtml: source.html });
   res.status(201).json({ generation: saveLoginGeneration({ source, config, dimensions: activeDimensions, plan, instruction, referenceHtml: source.html, ai }) });
-}));
+};
+app.post('/api/login-generations', aiLimiter, asyncRoute(generateLoginRoute));
+app.post('/api/integration/login-generations', requireIntegrationToken, aiLimiter, asyncRoute(generateLoginRoute));
 app.post('/api/login-generations/:id/refine', aiLimiter, asyncRoute(async (req, res) => {
   const current = store.get<GenerationRow>('SELECT * FROM login_generation_records WHERE id=?', [String(req.params.id)]);
   if (!current) return void res.status(404).json({ error: '登录页生成记录不存在' });

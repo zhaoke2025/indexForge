@@ -86,6 +86,20 @@ function removeElementByClass(content: string, className: string) {
   return output;
 }
 
+function removeElementById(content: string, id: string) {
+  const opening = new RegExp(`<([a-z][\\w-]*)[^>]+id=(["'])${id}\\2[^>]*>`, 'i').exec(content);
+  if (!opening || opening.index === undefined) return content;
+  const tagName = opening[1];
+  const tagPattern = new RegExp(`<\\/?${tagName}\\b[^>]*>`, 'ig');
+  tagPattern.lastIndex = opening.index + opening[0].length;
+  let depth = 1;
+  for (let match = tagPattern.exec(content); match; match = tagPattern.exec(content)) {
+    depth += new RegExp(`^<${tagName}\\b`, 'i').test(match[0]) ? 1 : -1;
+    if (depth === 0) return `${content.slice(0, opening.index)}${content.slice(tagPattern.lastIndex)}`;
+  }
+  return content;
+}
+
 function removeUserDropdown(content: string) {
   return removeElementByClass(
     removeElementByClass(
@@ -158,9 +172,11 @@ export function applyFunctionalDimensions(html: string, dimensions: FeatureDimen
   if (!findUserMenu(html)) return html;
 
   const showAvatar = userInfo.includes('头像');
+  const showName = userInfo.includes('姓名') || userInfo.includes('用户名');
   const showRole = userInfo.includes('角色');
   const showDropdown = userInfo.includes('下拉');
-  const missingRequiredElement = !hasClassElement(html, 'user-name')
+  const showDirectLogout = userInfo.includes('退出登录按钮');
+  const missingRequiredElement = (showName && !hasClassElement(html, 'user-name'))
     || (showAvatar && !hasClassElement(html, 'avatar-circle'))
     || (showRole && !hasClassElement(html, 'user-role'));
   const fallbackUserMenu = userMenuHtml(fallbackHtml);
@@ -172,14 +188,58 @@ export function applyFunctionalDimensions(html: string, dimensions: FeatureDimen
     if (showAvatar && !hasClassElement(next, 'avatar-circle')) {
       next = `<div class="avatar-circle"><i class="fa fa-user-o"></i></div>${next}`;
     }
+    if (!showName && !showRole) {
+      next = removeElementByClass(next, 'user-meta');
+    } else if (!showName) {
+      next = removeElementByClass(next, 'user-name');
+    }
     if (!showRole) next = removeElementByClass(next, 'user-role');
-    if (!hasClassElement(next, 'user-name')) {
+    if (showName && !hasClassElement(next, 'user-name')) {
       next += `<div class="user-meta"><span class="user-name">系统管理员</span>${showRole ? '<span class="user-role">管理员</span>' : ''}</div>`;
     } else if (showRole && !hasClassElement(next, 'user-role')) {
       next += '<span class="user-role">管理员</span>';
     }
+    if (showDropdown || showDirectLogout) {
+      next = removeElementByClass(removeElementById(next, 'logoutBtn'), 'btn-logout');
+    }
+    if (showDirectLogout) {
+      next += '<button class="btn-logout indexforge-logout-button" id="logoutBtn" type="button"><i class="fa fa-sign-out"></i><span>退出登录</span></button>';
+    }
     return next;
   });
+
+  if (showDirectLogout) {
+    if (!output.includes('/* IndexForge direct logout */')) {
+      output = injectBefore(output, '</head>', `<style>
+        /* IndexForge direct logout */
+        .indexforge-logout-button {
+            display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+            min-height: 34px; padding: 0 10px; border: 0; border-radius: 6px;
+            color: #DC2626; background: transparent; cursor: pointer;
+        }
+        .indexforge-logout-button:hover { background: #FEE2E2; }
+    </style>`);
+    }
+    if (!output.includes('function bindIndexForgeLogoutButton') && !/getElementById\(\s*['"]logoutBtn['"]\s*\)\s*\.addEventListener/i.test(output)) {
+      output = injectBefore(output, '</body>', `<script>
+        function bindIndexForgeLogoutButton() {
+            const logoutButton = document.getElementById('logoutBtn');
+            if (!logoutButton) return;
+            logoutButton.addEventListener('click', function() {
+                const redirectToLogin = function() { window.location.href = 'login.html'; };
+                if (typeof window.showConfirm === 'function') {
+                    Promise.resolve(window.showConfirm('退出系统', '确定要退出登录吗？', '确定', '取消')).then(function(result) {
+                        if (result) redirectToLogin();
+                    });
+                    return;
+                }
+                if (window.confirm('确定要退出登录吗？')) redirectToLogin();
+            });
+        }
+        bindIndexForgeLogoutButton();
+    </script>`);
+    }
+  }
 
   if (!showDropdown) return output;
 

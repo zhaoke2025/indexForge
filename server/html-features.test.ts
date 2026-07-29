@@ -10,12 +10,12 @@ describe('functional HTML dimensions', () => {
   const template = fs.readFileSync('docs/测试母版-index.html', 'utf8');
   const dropdownDimension = [{ id: 'userInfo', value: '头像+姓名+角色+下拉' }];
   const userInfoCases = [
-    ['头像+姓名+角色+下拉', true, true, true],
-    ['头像+姓名+角色', true, true, false],
-    ['头像+姓名+下拉', true, false, true],
-    ['头像+姓名', true, false, false],
-    ['仅姓名+下拉', false, false, true],
-    ['仅姓名', false, false, false],
+    ['头像+姓名+角色+下拉', true, true, true, true],
+    ['头像+姓名+角色', true, true, true, false],
+    ['头像+姓名+下拉', true, true, false, true],
+    ['头像+姓名', true, true, false, false],
+    ['仅姓名+下拉', false, true, false, true],
+    ['仅姓名', false, true, false, false],
   ] as const;
 
   it('adds a complete user dropdown when requested by the dimension', () => {
@@ -108,12 +108,24 @@ describe('functional HTML dimensions', () => {
     expect(hasClassElement(html, 'user-menu')).toBe(false);
   });
 
-  it.each(userInfoCases)('applies user info shape %s', (value, hasAvatar, hasRole, hasDropdown) => {
+  it('keeps only the avatar and a functional logout button when requested', () => {
+    const dimensions = [{ id: 'userInfo', value: '头像+退出登录按钮' }];
+    const html = applyFunctionalDimensions(template, dimensions, template);
+    expect(hasClassElement(html, 'avatar-circle')).toBe(true);
+    expect(hasClassElement(html, 'user-name')).toBe(false);
+    expect(hasClassElement(html, 'user-role')).toBe(false);
+    expect(hasClassElement(html, 'user-dropdown')).toBe(false);
+    expect(html).toContain('id="logoutBtn"');
+    expect(html).toContain('退出登录');
+    expect(html).toContain('function bindIndexForgeLogoutButton');
+  });
+
+  it.each(userInfoCases)('applies user info shape %s', (value, hasAvatar, hasName, hasRole, hasDropdown) => {
     const dimensions = [{ id: 'userInfo', value }];
     const html = applyFunctionalDimensions(template, dimensions);
     expect(hasClassElement(html, 'avatar-circle')).toBe(hasAvatar);
+    expect(hasClassElement(html, 'user-name')).toBe(hasName);
     expect(hasClassElement(html, 'user-role')).toBe(hasRole);
     expect(hasClassElement(html, 'user-dropdown')).toBe(hasDropdown);
-    expect(hasClassElement(html, 'user-name')).toBe(true);
   });
 });

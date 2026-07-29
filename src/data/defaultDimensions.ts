@@ -31,7 +31,7 @@ export const defaultDimensions: DimensionConfig[] = [
   { id: 'menuDivider', name: '菜单分割线', group: '信息装饰层', enabled: true, description: '菜单项之间是否显示分割线。', value: false },
   { id: 'menuBadge', name: '菜单角标/徽章', group: '信息装饰层', enabled: true, description: '菜单项右侧标记。', value: '无', options: ['无', 'NEW', 'Beta'] },
   { id: 'sidebarFooter', name: '侧边栏底部信息', group: '信息装饰层', enabled: true, description: '侧边栏底部版本信息。', value: '版本信息' },
-  { id: 'userInfo', name: '顶栏用户信息与下拉菜单', group: '信息装饰层', enabled: true, description: '用户名、角色、头像，以及右上角修改密码、退出登录下拉操作。', value: '头像+姓名+角色+下拉', options: ['头像+姓名+角色+下拉', '头像+姓名+角色', '头像+姓名+下拉', '头像+姓名', '仅姓名+下拉', '仅姓名', '移除用户'] },
+  { id: 'userInfo', name: '顶栏用户信息与下拉菜单', group: '信息装饰层', enabled: true, description: '用户名、角色、头像，以及右上角修改密码、退出登录下拉操作。', value: '头像+姓名+角色+下拉', options: ['头像+退出登录按钮', '头像+姓名+角色+下拉', '头像+姓名+角色', '头像+姓名+下拉', '头像+姓名', '仅姓名+下拉', '仅姓名', '移除用户'] },
   { id: 'menuOrder', name: '菜单顺序与重组', group: '信息装饰层', enabled: true, description: '控制菜单排序方式，或通过菜单配置页精确调整。', value: '默认', options: ['默认', '一级菜单按名称排序', '子菜单按名称排序'] },
   { id: 'spacing', name: '间距', group: '额外基础层', enabled: true, description: '页面内边距和菜单间距。', value: '标准', options: ['紧凑', '标准', '宽松', '自定义'] },
   { id: 'borderStyle', name: '全局边框样式', group: '视觉基因层', enabled: true, description: '边框强度与形态。', value: '标准', options: ['无', '标准', '强调', '自定义'] },

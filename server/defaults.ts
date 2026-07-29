@@ -24,7 +24,7 @@ export const seedDimensions: SeedDimension[] = [
   { id: 'menuDivider', name: '菜单分割线', groupName: '信息装饰层', description: '菜单项之间是否显示分割线。', valueType: 'boolean', options: [] },
   { id: 'menuBadge', name: '菜单角标/徽章', groupName: '信息装饰层', description: '菜单项右侧标记。', valueType: 'single-select', options: ['无', 'NEW', 'Beta'] },
   { id: 'sidebarFooter', name: '侧边栏底部信息', groupName: '信息装饰层', description: '侧边栏底部版本信息。', valueType: 'text', options: [] },
-  { id: 'userInfo', name: '顶栏用户信息与下拉菜单', groupName: '信息装饰层', description: '用户名、角色、头像以及右上角操作。', valueType: 'single-select', options: ['头像+姓名+角色+下拉', '头像+姓名+角色', '头像+姓名+下拉', '头像+姓名', '仅姓名+下拉', '仅姓名', '移除用户'] },
+  { id: 'userInfo', name: '顶栏用户信息与下拉菜单', groupName: '信息装饰层', description: '用户名、角色、头像以及右上角操作。', valueType: 'single-select', options: ['头像+退出登录按钮', '头像+姓名+角色+下拉', '头像+姓名+角色', '头像+姓名+下拉', '头像+姓名', '仅姓名+下拉', '仅姓名', '移除用户'] },
   { id: 'menuOrder', name: '菜单顺序与重组', groupName: '信息装饰层', description: '控制菜单排序方式。', valueType: 'single-select', options: ['默认', '一级菜单按名称排序', '子菜单按名称排序'] },
   { id: 'spacing', name: '间距', groupName: '额外基础层', description: '页面内边距和菜单间距。', valueType: 'single-select', options: ['紧凑', '标准', '宽松', '自定义'] },
   { id: 'borderStyle', name: '全局边框样式', groupName: '视觉基因层', description: '边框强度与形态。', valueType: 'single-select', options: ['无', '标准', '强调', '自定义'] },
