@@ -15,8 +15,11 @@ import { buildLoginPrompt, buildLoginRepairPrompt, extractLoginHtml, loginSystem
 import { Store, type Row } from './store.js';
 import { seedLoginDimensions, seedLoginRequirements } from './defaults.js';
 import { enforcedIndexRequirements, protectedIndexRequirementIds } from './index-requirements.js';
+import { createAdminAuth } from './admin-auth.js';
 import { createIntegrationAuth } from './integration-auth.js';
+import { integrationResponse, integrationSourceGenerationId } from './integration-response.js';
 import { repairUntilValid } from './repair-loop.js';
+import { formatBeijingTime } from './time.js';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
@@ -33,11 +36,15 @@ const port = Number(process.env.API_PORT || process.env.PORT || 8787);
 const isProduction = process.env.NODE_ENV === 'production';
 const allowedOrigins = (process.env.CORS_ORIGINS || '').split(',').map((value) => value.trim()).filter(Boolean);
 const maxRepairAttempts = Math.min(5, Math.max(1, Number(process.env.AI_REPAIR_MAX_ATTEMPTS || 3)));
-const integrationAuth = createIntegrationAuth({
-  username: process.env.INTEGRATION_API_USERNAME || '',
-  password: process.env.INTEGRATION_API_PASSWORD || '',
-  tokenTtlSeconds: Number(process.env.INTEGRATION_TOKEN_TTL_SECONDS || 7_200),
+const adminAuth = createAdminAuth({
+  username: process.env.ADMIN_USERNAME || '',
+  password: process.env.ADMIN_PASSWORD || '',
+  sessionTtlSeconds: Number(process.env.ADMIN_SESSION_TTL_SECONDS || 28_800),
 });
+const integrationAuth = createIntegrationAuth({
+  token: process.env.INTEGRATION_API_TOKEN || '',
+});
+const adminSessionCookie = 'indexforge_session';
 
 if (process.env.TRUST_PROXY) app.set('trust proxy', Number(process.env.TRUST_PROXY) || process.env.TRUST_PROXY);
 app.disable('x-powered-by');
@@ -49,6 +56,11 @@ app.use(cors({ origin(origin, callback) {
   error.status = 403;
   callback(error);
 } }));
+app.use('/api/integration', (_req, res, next) => {
+  const sendJson = res.json.bind(res);
+  res.json = ((body: unknown) => sendJson(integrationResponse(res.statusCode, body))) as typeof res.json;
+  next();
+});
 app.use(express.json({ limit: '3mb' }));
 
 const aiLimiter = rateLimit({
@@ -56,7 +68,7 @@ const aiLimiter = rateLimit({
   limit: Number(process.env.API_RATE_LIMIT_MAX || 20), standardHeaders: 'draft-8', legacyHeaders: false,
   message: { error: '请求过于频繁，请稍后重试' },
 });
-const integrationLoginLimiter = rateLimit({
+const adminLoginLimiter = rateLimit({
   windowMs: 15 * 60_000,
   limit: 10,
   standardHeaders: 'draft-8',
@@ -65,9 +77,22 @@ const integrationLoginLimiter = rateLimit({
 });
 const asyncRoute = (handler: (req: express.Request, res: express.Response) => Promise<void>) =>
   (req: express.Request, res: express.Response, next: express.NextFunction) => { handler(req, res).catch(next); };
+const cookieValue = (req: express.Request, name: string) => {
+  const item = String(req.headers.cookie || '').split(';').map((value) => value.trim()).find((value) => value.startsWith(`${name}=`));
+  if (!item) return '';
+  try { return decodeURIComponent(item.slice(name.length + 1)); } catch { return ''; }
+};
+const sessionCookie = (token: string, maxAge: number, secure: boolean) =>
+  `${adminSessionCookie}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure ? '; Secure' : ''}`;
 const requireIntegrationToken: express.RequestHandler = (req, res, next) => {
-  if (!integrationAuth.configured) return void res.status(503).json({ error: '软著系统对接账号尚未配置' });
-  if (!integrationAuth.authorize(String(req.headers.authorization || ''))) return void res.status(401).json({ error: 'Token无效或已过期' });
+  if (!integrationAuth.configured) return void res.status(503).json({ error: '外部 API Token 尚未配置' });
+  if (!integrationAuth.authorize(String(req.headers.authorization || ''))) return void res.status(401).json({ error: 'Token无效' });
+  next();
+};
+const requireIntegrationSourceGenerationId: express.RequestHandler = (req, res, next) => {
+  const sourceGenerationId = integrationSourceGenerationId(req.body);
+  if (!sourceGenerationId) return void res.status(400).json({ error: 'sourceGenerationId不能为空' });
+  req.body.sourceGenerationId = sourceGenerationId;
   next();
 };
 
@@ -100,8 +125,8 @@ function loginRequirements() { return store.all<RequirementRow>('SELECT * FROM l
 function dimensionDto(row: DimensionRow) { return { id: row.id, name: row.name, group: row.group_name, description: row.description, valueType: row.value_type, options: parseJson<string[]>(row.options_json, []), enabled: bool(row.enabled), sortOrder: Number(row.sort_order) }; }
 function requirementDto(row: RequirementRow) { return { id: row.id, name: row.name, description: row.description, level: row.level, validationType: row.validation_type, builtinValidator: row.builtin_validator || undefined, enabled: bool(row.enabled), sortOrder: Number(row.sort_order) }; }
 function templateDto(row: TemplateRow) { const saved = parseJson<ReturnType<typeof validateHtml> | null>(row.validation_json, null); return { id: row.id, name: row.name, html: row.html, validation: saved && typeof saved.valid === 'boolean' ? saved : validateHtml(row.html), isCurrent: bool(row.is_current) }; }
-function generationDto(row: GenerationRow) { return { id: row.id, parentId: row.parent_id || undefined, systemName: row.system_name, version: row.version_input || '', displayName: row.display_name, instruction: row.instruction || '', refinementInstruction: row.refinement_instruction || '', systemType: row.system_type || '', toneSummary: row.tone_summary || '', dimensions: parseJson(row.decisions_json, []), menuConfig: parseJson(row.menu_json, []), requirementChecks: parseJson(row.requirement_checks_json, []), validation: parseJson(row.validation_json, { valid: false, errors: [], warnings: [] }), html: ensureReferencedElementAliases(ensureSidebarToggleAccessible(row.html)), status: row.status, generatedAt: row.created_at }; }
-function loginGenerationDto(row: GenerationRow) { return { id: row.id, parentId: row.parent_id || undefined, sourceGenerationId: row.source_generation_id, systemName: row.system_name, version: row.version_input || '', slogan: row.slogan || '', instruction: row.instruction || '', refinementInstruction: row.refinement_instruction || '', config: parseJson(row.config_json, {}), dimensions: parseJson(row.decisions_json, []), requirementChecks: parseJson(row.requirement_checks_json, []), validation: parseJson(row.validation_json, { valid: false, errors: [], warnings: [] }), html: row.html, status: row.status, generatedAt: row.created_at }; }
+function generationDto(row: GenerationRow) { return { id: row.id, parentId: row.parent_id || undefined, systemName: row.system_name, version: row.version_input || '', displayName: row.display_name, instruction: row.instruction || '', refinementInstruction: row.refinement_instruction || '', systemType: row.system_type || '', toneSummary: row.tone_summary || '', dimensions: parseJson(row.decisions_json, []), menuConfig: parseJson(row.menu_json, []), requirementChecks: parseJson(row.requirement_checks_json, []), validation: parseJson(row.validation_json, { valid: false, errors: [], warnings: [] }), html: ensureReferencedElementAliases(ensureSidebarToggleAccessible(row.html)), status: row.status, generatedAt: formatBeijingTime(row.created_at) }; }
+function loginGenerationDto(row: GenerationRow) { return { id: row.id, parentId: row.parent_id || undefined, sourceGenerationId: row.source_generation_id, systemName: row.system_name, version: row.version_input || '', slogan: row.slogan || '', instruction: row.instruction || '', refinementInstruction: row.refinement_instruction || '', config: parseJson(row.config_json, {}), dimensions: parseJson(row.decisions_json, []), requirementChecks: parseJson(row.requirement_checks_json, []), validation: parseJson(row.validation_json, { valid: false, errors: [], warnings: [] }), html: row.html, status: row.status, generatedAt: formatBeijingTime(row.created_at) }; }
 
 function validateId(value: unknown) {
   const id = String(value || '').trim();
@@ -117,11 +142,32 @@ function dimensionValue(body: Record<string, unknown>) {
 }
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, hasApiKey: Boolean(process.env.OPENAI_API_KEY), model: process.env.OPENAI_MODEL || 'deepseek-chat', database: true }));
-app.post('/api/integration/auth/login', integrationLoginLimiter, (req, res) => {
-  if (!integrationAuth.configured) return void res.status(503).json({ error: '软著系统对接账号尚未配置' });
-  const result = integrationAuth.login(String(req.body?.username || ''), String(req.body?.password || ''));
+app.get('/api/auth/session', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ configured: adminAuth.configured, authenticated: adminAuth.authorize(cookieValue(req, adminSessionCookie)) });
+});
+app.post('/api/auth/login', adminLoginLimiter, (req, res) => {
+  if (!adminAuth.configured) return void res.status(503).json({ error: '后台管理员账号尚未配置' });
+  const result = adminAuth.login(String(req.body?.username || ''), String(req.body?.password || ''));
   if (!result) return void res.status(401).json({ error: '账号或密码错误' });
-  res.json(result);
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Set-Cookie', sessionCookie(result.sessionToken, result.expiresIn, req.secure));
+  res.json({ username: result.username, expiresIn: result.expiresIn });
+});
+app.post('/api/auth/logout', (req, res) => {
+  adminAuth.logout(cookieValue(req, adminSessionCookie));
+  res.setHeader('Set-Cookie', sessionCookie('', 0, req.secure));
+  res.status(204).end();
+});
+app.post('/api/integration/auth/login', (_req, res) => res.status(410).json({ error: '该接口已停用，请直接使用预分配的固定 Token' }));
+app.use('/api', (req, res, next) => {
+  const integrationPath = req.path === '/integration/generations'
+    || req.path === '/integration/login-generations'
+    || /^\/integration\/(?:generations|login-generations)\/[^/]+\/refine$/.test(req.path);
+  if (integrationPath) return next();
+  if (!adminAuth.configured) return void res.status(503).json({ error: '后台管理员账号尚未配置' });
+  if (!adminAuth.authorize(cookieValue(req, adminSessionCookie))) return void res.status(401).json({ error: '请先登录' });
+  next();
 });
 
 app.get('/api/dimensions', (_req, res) => res.json({ dimensions: dimensions() }));
@@ -284,13 +330,15 @@ const generateIndexRoute = async (req: express.Request, res: express.Response) =
 };
 app.post('/api/generations', aiLimiter, asyncRoute(generateIndexRoute));
 app.post('/api/integration/generations', requireIntegrationToken, aiLimiter, asyncRoute(generateIndexRoute));
-app.post('/api/generations/:id/refine', aiLimiter, asyncRoute(async (req, res) => {
+const refineIndexRoute = async (req: express.Request, res: express.Response) => {
   const recordId = String(req.params.id); const current = store.get<GenerationRow>('SELECT * FROM generation_records WHERE id=?', [recordId]); if (!current) return void res.status(404).json({ error: '生成记录不存在' });
   const instruction = String(req.body?.instruction || '').trim().slice(0, 2000); if (!instruction) return void res.status(400).json({ error: '调整意见不能为空' });
   const template = store.get<TemplateRow>('SELECT * FROM templates WHERE id=?', [current.template_id]); if (!template) return void res.status(409).json({ error: '历史母版不存在' });
   const ai = await requestAi({ systemName: current.system_name, version: current.version_input || '', instruction, template, current });
   res.status(201).json({ generation: await saveGeneration({ systemName: current.system_name, version: current.version_input || '', instruction: current.instruction || '', refinementInstruction: instruction, parentId: current.id, template, ai }) });
-}));
+};
+app.post('/api/generations/:id/refine', aiLimiter, asyncRoute(refineIndexRoute));
+app.post('/api/integration/generations/:id/refine', requireIntegrationToken, aiLimiter, asyncRoute(refineIndexRoute));
 app.get('/api/generations', (_req, res) => res.json({ generations: store.all<GenerationRow>('SELECT * FROM generation_records ORDER BY created_at DESC LIMIT 100').map(generationDto) }));
 app.post('/api/generations/bulk-delete', (req, res) => { const ids = [...new Set<string>((Array.isArray(req.body?.ids) ? req.body.ids : []).map((id: unknown) => String(id)).filter(Boolean))].slice(0, 100); if (!ids.length) return void res.status(400).json({ error: '请选择需要删除的首页记录' }); store.transaction(() => ids.forEach((id) => store.run('DELETE FROM generation_records WHERE id=?', [id]))); res.json({ deleted: ids.length }); });
 app.get('/api/generations/:id', (req, res) => { const row = store.get<GenerationRow>('SELECT * FROM generation_records WHERE id=?', [req.params.id]); if (!row) return void res.status(404).json({ error: '生成记录不存在' }); res.json({ generation: generationDto(row) }); });
@@ -358,8 +406,8 @@ const generateLoginRoute = async (req: express.Request, res: express.Response) =
   res.status(201).json({ generation: saveLoginGeneration({ source, config, dimensions: activeDimensions, plan, instruction, referenceHtml: source.html, ai }) });
 };
 app.post('/api/login-generations', aiLimiter, asyncRoute(generateLoginRoute));
-app.post('/api/integration/login-generations', requireIntegrationToken, aiLimiter, asyncRoute(generateLoginRoute));
-app.post('/api/login-generations/:id/refine', aiLimiter, asyncRoute(async (req, res) => {
+app.post('/api/integration/login-generations', requireIntegrationToken, requireIntegrationSourceGenerationId, aiLimiter, asyncRoute(generateLoginRoute));
+const refineLoginRoute = async (req: express.Request, res: express.Response) => {
   const current = store.get<GenerationRow>('SELECT * FROM login_generation_records WHERE id=?', [String(req.params.id)]);
   if (!current) return void res.status(404).json({ error: '登录页生成记录不存在' });
   const instruction = String(req.body?.instruction || '').trim().slice(0, 2000); if (!instruction) return void res.status(400).json({ error: '调整意见不能为空' });
@@ -374,7 +422,9 @@ app.post('/api/login-generations/:id/refine', aiLimiter, asyncRoute(async (req, 
   if (config.backgroundType !== '图片通铺') delete config.backgroundImage;
   const ai = await requestLoginAi({ config, instruction, referenceHtml: current.reference_html, current });
   res.status(201).json({ generation: saveLoginGeneration({ source, config, dimensions: activeDimensions, plan, instruction: current.instruction || '', refinementInstruction: instruction, parentId: current.id, referenceHtml: current.reference_html, ai }) });
-}));
+};
+app.post('/api/login-generations/:id/refine', aiLimiter, asyncRoute(refineLoginRoute));
+app.post('/api/integration/login-generations/:id/refine', requireIntegrationToken, aiLimiter, asyncRoute(refineLoginRoute));
 app.get('/api/login-generations', (_req, res) => res.json({ generations: store.all<GenerationRow>('SELECT * FROM login_generation_records ORDER BY created_at DESC LIMIT 100').map(loginGenerationDto) }));
 app.post('/api/login-generations/bulk-delete', (req, res) => { const ids = [...new Set<string>((Array.isArray(req.body?.ids) ? req.body.ids : []).map((id: unknown) => String(id)).filter(Boolean))].slice(0, 100); if (!ids.length) return void res.status(400).json({ error: '请选择需要删除的登录页记录' }); store.transaction(() => ids.forEach((id) => store.run('DELETE FROM login_generation_records WHERE id=?', [id]))); res.json({ deleted: ids.length }); });
 app.delete('/api/login-generations/:id', (req, res) => { const id = String(req.params.id); if (!store.get('SELECT id FROM login_generation_records WHERE id=?', [id])) return void res.status(404).json({ error: '登录页生成记录不存在' }); store.run('DELETE FROM login_generation_records WHERE id=?', [id]); res.status(204).end(); });

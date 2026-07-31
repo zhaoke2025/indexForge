@@ -4,7 +4,7 @@ import type { DimensionConfig } from '../data/defaultDimensions';
 import type { RequirementRule } from '../data/defaultRequirements';
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(url, { ...options, headers: { 'Content-Type': 'application/json', ...options?.headers } });
+  const response = await fetch(url, { ...options, credentials: 'same-origin', headers: { 'Content-Type': 'application/json', ...options?.headers } });
   if (response.status === 204) return undefined as T;
   const payload = await response.json() as T & { error?: string };
   if (!response.ok) throw new Error(payload.error || `请求失败（${response.status}）`);
@@ -12,6 +12,9 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  authSession: () => request<{ configured: boolean; authenticated: boolean }>('/api/auth/session'),
+  login: (username: string, password: string) => request<{ username: string; expiresIn: number }>('/api/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
+  logout: () => request<void>('/api/auth/logout', { method: 'POST' }),
   loadAll: async () => {
     const [dimensions, requirements, loginDimensions, loginRequirements, templates, generations, loginGenerations] = await Promise.all([
       request<{ dimensions: DimensionConfig[] }>('/api/dimensions'),

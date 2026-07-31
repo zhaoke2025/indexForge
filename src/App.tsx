@@ -1,4 +1,4 @@
-import { FileCode2, History, Layers3, ListChecks, LogIn, Wand2 } from 'lucide-react';
+import { FileCode2, History, Layers3, ListChecks, LogIn, LogOut, Wand2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from './core/api';
 import { readStorage, writeStorage } from './core/storage';
@@ -13,6 +13,7 @@ import HistoryPage from './pages/HistoryPage';
 import LoginGeneratePage from './pages/LoginGeneratePage';
 import RequirementConfigPage from './pages/RequirementConfigPage';
 import TemplateManagerPage from './pages/TemplateManagerPage';
+import AdminLoginPage from './pages/AdminLoginPage';
 
 type PageKey = 'generate' | 'login' | 'loginDimensions' | 'loginRequirements' | 'dimensions' | 'requirements' | 'template' | 'history';
 const navItems = [
@@ -29,6 +30,7 @@ const pageMeta: Record<PageKey, { title: string; desc: string }> = {
 };
 
 export default function App() {
+  const [auth, setAuth] = useState<{ configured: boolean; authenticated: boolean }>();
   const [activePage, setActivePage] = useState<PageKey>('generate');
   const [dimensions, setDimensions] = useState<DimensionConfig[]>([]); const [requirements, setRequirements] = useState<RequirementRule[]>([]);
   const [loginDimensions, setLoginDimensions] = useState<DimensionConfig[]>([]); const [loginRequirements, setLoginRequirements] = useState<RequirementRule[]>([]);
@@ -39,7 +41,9 @@ export default function App() {
   const [presetId] = useState(() => readStorage('indexforge.presetId', defaultStylePreset.id));
 
   const reload = useCallback(async () => { try { const data = await api.loadAll(); setDimensions(data.dimensions); setRequirements(data.requirements); setLoginDimensions(data.loginDimensions); setLoginRequirements(data.loginRequirements); setTemplates(data.templates); setHistory(data.generations); setLoginHistory(data.loginGenerations); setError(''); } catch (reason) { setError(reason instanceof Error ? reason.message : '服务端数据加载失败'); } finally { setLoading(false); } }, []);
-  useEffect(() => { reload(); }, [reload]); useEffect(() => { writeStorage('indexforge.loginConfig', loginConfig); }, [loginConfig]);
+  useEffect(() => { api.authSession().then(setAuth).catch((reason) => { setError(reason instanceof Error ? reason.message : '无法检查登录状态'); setAuth({ configured: false, authenticated: false }); }); }, []);
+  useEffect(() => { if (auth?.authenticated) reload(); }, [auth?.authenticated, reload]);
+  useEffect(() => { writeStorage('indexforge.loginConfig', loginConfig); }, [loginConfig]);
   const meta = pageMeta[activePage];
   const content = useMemo(() => {
     if (activePage === 'generate') return <GenerateIndexPage hasCurrentTemplate={templates.some((item) => item.isCurrent && item.validation.valid)} initialRecord={selectedRecord} onGenerated={async (record) => { setSelectedRecord(record); await reload(); }} />;
@@ -52,7 +56,10 @@ export default function App() {
     return <HistoryPage loginRecords={loginHistory} records={history} onReload={reload} onPreview={(record) => { setSelectedRecord(record); setActivePage('generate'); }} onPreviewLogin={(record) => { setSelectedLoginRecord(record); setActivePage('login'); }} />;
   }, [activePage, selectedRecord, selectedLoginRecord, loginConfig, dimensions, loginDimensions, loginRequirements, presetId, requirements, templates, history, loginHistory, reload]);
 
+  if (!auth) return <div className="flex min-h-screen items-center justify-center bg-[#f4f7fb] text-sm text-slate-500">正在检查登录状态…</div>;
+  if (!auth.authenticated) return <AdminLoginPage configured={auth.configured} onLogin={() => { setLoading(true); setAuth({ ...auth, authenticated: true }); }} />;
+
   return <div className="min-h-screen bg-[#f4f7fb] text-slate-900"><aside className="fixed inset-y-0 left-0 z-20 flex w-60 flex-col border-r border-slate-200 bg-white"><div className="flex h-14 items-center gap-2 border-b px-4"><div className="flex h-8 w-8 items-center justify-center rounded bg-blue-600 text-sm font-semibold text-white">IF</div><div><div className="text-sm font-semibold">IndexForge</div><div className="text-xs text-slate-500">AI首页生成器</div></div></div><nav className="flex-1 space-y-1 px-3 py-4">{navItems.map((item) => { const Icon = item.icon; const active = item.key === activePage; return <button className={`flex w-full items-center gap-3 rounded px-3 py-2 text-left text-sm ${active ? 'bg-blue-50 font-medium text-blue-700' : 'text-slate-600 hover:bg-slate-100'}`} key={item.key} onClick={() => setActivePage(item.key)}><Icon size={17} />{item.name}</button>; })}</nav></aside>
-    <main className="ml-60 min-h-screen"><header className="sticky top-0 z-10 flex h-14 items-center border-b bg-white px-6"><div><h1 className="text-base font-semibold">{meta.title}</h1><p className="text-xs text-slate-500">{meta.desc}</p></div></header>{error && <div className="m-5 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}{loading ? <div className="p-8 text-sm text-slate-500">正在加载服务器数据…</div> : content}</main>
+    <main className="ml-60 min-h-screen"><header className="sticky top-0 z-10 flex h-14 items-center justify-between border-b bg-white px-6"><div><h1 className="text-base font-semibold">{meta.title}</h1><p className="text-xs text-slate-500">{meta.desc}</p></div><button className="secondary-button" onClick={async () => { await api.logout(); setAuth({ ...auth, authenticated: false }); }} type="button"><LogOut size={15} />退出登录</button></header>{error && <div className="m-5 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}{loading ? <div className="p-8 text-sm text-slate-500">正在加载服务器数据…</div> : content}</main>
   </div>;
 }
