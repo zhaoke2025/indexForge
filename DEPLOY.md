@@ -13,7 +13,7 @@ cp .env.example .env
 ```env
 OPENAI_API_KEY=你的密钥
 OPENAI_BASE_URL=https://api.deepseek.com
-OPENAI_MODEL=deepseek-chat
+OPENAI_MODEL=deepseek-v4-flash
 API_PORT=8787
 TRUST_PROXY=1
 ADMIN_USERNAME=admin
@@ -21,6 +21,8 @@ ADMIN_PASSWORD=高强度随机密码
 ADMIN_SESSION_TTL_SECONDS=28800
 INTEGRATION_API_TOKEN=外部系统专用高强度随机Token
 ```
+
+DeepSeek 高峰期可能长时间保持请求连接，建议设置 `AI_REQUEST_TIMEOUT_MS=660000`。服务默认输出精简的结构化日志；只有临时排障确需查看完整提示词时才设置 `AI_LOG_PROMPTS=1`，排查完成后立即恢复为 `0`，避免业务内容进入日志。
 
 启动：
 
@@ -92,3 +94,19 @@ npm run build
 - 如果前后端分域部署，在 `CORS_ORIGINS` 填写完整 HTTPS 来源。
 - 定期轮换 AI API Key，并在供应商控制台设置额度告警。
 - 当前业务配置存于用户浏览器，请使用“生成记录 → 导出备份”定期备份。
+
+## 日志排查
+
+实时查看请求和 AI 调用阶段：
+
+```bash
+docker compose logs -f --tail=200 indexforge
+```
+
+每条 API 响应都会返回 `X-Request-Id`；页面错误提示也会显示请求 ID。可按请求 ID 筛选一次生成涉及的全部日志：
+
+```bash
+docker compose logs --since 30m indexforge | grep '页面显示的请求ID'
+```
+
+常用事件包括 `http.request.start`、`ai.call.start`、`ai.call.success`、`ai.output.invalid`、`ai.call.error` 和 `http.request.finish`。AI 日志包含阶段、模型、调用次数、耗时、输出字符数及 Token 用量，不包含 API Key。

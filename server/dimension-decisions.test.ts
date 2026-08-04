@@ -35,6 +35,14 @@ describe('AI dimension decisions', () => {
     expect(plan.toneSummary).toBe('稳健清晰');
   });
 
+  it('accepts JSON wrapped in a markdown code fence', () => {
+    const content = `\`\`\`json\n${JSON.stringify({ dimensions: [
+      { dimensionId: 'mode', applied: true, value: '浅色', reason: '' },
+      { dimensionId: 'sidebarToggle', applied: false, value: null, reason: '' },
+    ] })}\n\`\`\``;
+    expect(parseDimensionPlan(content, definitions).dimensions).toHaveLength(2);
+  });
+
   it('rejects values outside configured options', () => {
     expect(() => parseDimensionPlan(JSON.stringify({ dimensions: [
       { dimensionId: 'mode', applied: true, value: '自动', reason: '' },

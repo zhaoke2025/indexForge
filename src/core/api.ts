@@ -6,8 +6,11 @@ import type { RequirementRule } from '../data/defaultRequirements';
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(url, { ...options, credentials: 'same-origin', headers: { 'Content-Type': 'application/json', ...options?.headers } });
   if (response.status === 204) return undefined as T;
-  const payload = await response.json() as T & { error?: string };
-  if (!response.ok) throw new Error(payload.error || `请求失败（${response.status}）`);
+  const payload = await response.json() as T & { error?: string; requestId?: string };
+  if (!response.ok) {
+    const requestId = payload.requestId || response.headers.get('x-request-id');
+    throw new Error(`${payload.error || `请求失败（${response.status}）`}${requestId ? `（请求ID：${requestId}）` : ''}`);
+  }
   return payload;
 }
 

@@ -20,6 +20,8 @@ import { createIntegrationAuth } from './integration-auth.js';
 import { integrationResponse, integrationSourceGenerationId } from './integration-response.js';
 import { repairUntilValid } from './repair-loop.js';
 import { formatBeijingTime } from './time.js';
+import { currentRequestId, errorLogFields, logEvent, withRequestContext } from './observability.js';
+import { readCompletion, type CompletionShape } from './ai-response.js';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
@@ -56,6 +58,22 @@ app.use(cors({ origin(origin, callback) {
   error.status = 403;
   callback(error);
 } }));
+app.use('/api', (req, res, next) => {
+  const suppliedId = typeof req.headers['x-request-id'] === 'string' ? req.headers['x-request-id'] : '';
+  const requestId = /^[a-zA-Z0-9._-]{1,100}$/.test(suppliedId) ? suppliedId : crypto.randomUUID();
+  const startedAt = Date.now();
+  res.setHeader('X-Request-Id', requestId);
+  withRequestContext(requestId, () => {
+    logEvent('info', 'http.request.start', { method: req.method, path: req.originalUrl.split('?')[0] });
+    res.once('finish', () => logEvent('info', 'http.request.finish', {
+      method: req.method,
+      path: req.originalUrl.split('?')[0],
+      status: res.statusCode,
+      durationMs: Date.now() - startedAt,
+    }));
+    next();
+  });
+});
 app.use('/api/integration', (_req, res, next) => {
   const sendJson = res.json.bind(res);
   res.json = ((body: unknown) => sendJson(integrationResponse(res.statusCode, body))) as typeof res.json;
@@ -141,7 +159,7 @@ function dimensionValue(body: Record<string, unknown>) {
   return { valueType, options };
 }
 
-app.get('/api/health', (_req, res) => res.json({ ok: true, hasApiKey: Boolean(process.env.OPENAI_API_KEY), model: process.env.OPENAI_MODEL || 'deepseek-chat', database: true }));
+app.get('/api/health', (_req, res) => res.json({ ok: true, hasApiKey: Boolean(process.env.OPENAI_API_KEY), model: aiModel(), database: true }));
 app.get('/api/auth/session', (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.json({ configured: adminAuth.configured, authenticated: adminAuth.authorize(cookieValue(req, adminSessionCookie)) });
@@ -235,7 +253,45 @@ app.delete('/api/templates/:id', (req, res) => { const row = store.get<TemplateR
 
 function openAiClient() {
   const apiKey = process.env.OPENAI_API_KEY; if (!apiKey?.trim()) throw Object.assign(new Error('服务端尚未配置AI API Key'), { status: 503 });
-  return new OpenAI({ apiKey, baseURL: process.env.OPENAI_BASE_URL || 'https://api.deepseek.com', timeout: Number(process.env.AI_REQUEST_TIMEOUT_MS || 120_000), maxRetries: 1 });
+  return new OpenAI({ apiKey, baseURL: process.env.OPENAI_BASE_URL || 'https://api.deepseek.com', timeout: Number(process.env.AI_REQUEST_TIMEOUT_MS || 660_000), maxRetries: 1 });
+}
+
+function aiModel() { return process.env.OPENAI_MODEL || 'deepseek-v4-flash'; }
+
+async function observedAiCall(input: { stage: string; attempt: number; messages: unknown; invoke: () => Promise<unknown> }) {
+  const callId = crypto.randomUUID();
+  const startedAt = Date.now();
+  logEvent('info', 'ai.call.start', { callId, stage: input.stage, attempt: input.attempt, model: aiModel() });
+  if (/^(1|true)$/i.test(process.env.AI_LOG_PROMPTS || '')) {
+    logEvent('info', 'ai.call.prompt', { callId, stage: input.stage, messages: input.messages });
+  }
+  try {
+    const completion = await input.invoke() as CompletionShape;
+    const { content, finishReason, usage } = readCompletion(completion);
+    logEvent('info', 'ai.call.success', {
+      callId,
+      stage: input.stage,
+      attempt: input.attempt,
+      model: aiModel(),
+      durationMs: Date.now() - startedAt,
+      finishReason,
+      contentChars: content.length,
+      promptTokens: usage?.prompt_tokens,
+      completionTokens: usage?.completion_tokens,
+      totalTokens: usage?.total_tokens,
+    });
+    return { callId, content, finishReason };
+  } catch (error) {
+    logEvent('error', 'ai.call.error', {
+      callId,
+      stage: input.stage,
+      attempt: input.attempt,
+      model: aiModel(),
+      durationMs: Date.now() - startedAt,
+      ...errorLogFields(error),
+    });
+    throw error;
+  }
 }
 
 async function requestDimensionPlan(input: { systemName: string; instruction: string; dimensions: DimensionDefinition[]; page: 'index' | 'login'; previous?: DimensionDecision[]; resources?: string[] }) {
@@ -244,17 +300,23 @@ async function requestDimensionPlan(input: { systemName: string; instruction: st
     { role: 'user', content: buildDimensionDecisionPrompt(input) },
   ];
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    const completion = await openAiClient().chat.completions.create({
-      model: process.env.OPENAI_MODEL || 'deepseek-chat',
-      temperature: 0.2,
-      max_tokens: Number(process.env.AI_DIMENSION_MAX_TOKENS || 4096),
-      response_format: { type: 'json_object' },
+    const result = await observedAiCall({
+      stage: `${input.page}.dimensions`,
+      attempt: attempt + 1,
       messages,
+      invoke: () => openAiClient().chat.completions.create({
+        model: aiModel(),
+        temperature: 0.2,
+        max_tokens: Number(process.env.AI_DIMENSION_MAX_TOKENS || 4096),
+        response_format: { type: 'json_object' },
+        messages,
+      }),
     });
-    const content = completion.choices[0]?.message?.content || '';
+    const content = result.content;
     try { return parseDimensionPlan(content, input.dimensions); }
     catch (error) {
-      if (attempt === 1) throw error;
+      logEvent('warn', 'ai.output.invalid', { callId: result.callId, stage: `${input.page}.dimensions`, attempt: attempt + 1, contentChars: content.length, ...errorLogFields(error) });
+      if (attempt === 1) throw Object.assign(error instanceof Error ? error : new Error(String(error)), { status: 502, code: 'AI_INVALID_DIMENSION_JSON' });
       messages.push(
         { role: 'assistant', content },
         { role: 'user', content: `上次维度评估不合规：${error instanceof Error ? error.message : '未知错误'}。请重新评估全部候选项，只保留少量对当前系统有显著价值且会实际落入HTML的维度，并严格遵守 applied 数量上限。` },
@@ -279,19 +341,25 @@ async function requestAi(input: { systemName: string; version: string; instructi
   const selectedDecisions = appliedDimensionDecisions(plan.dimensions);
   const appliedDimensions = selectedDecisions.map((item) => ({ id: item.dimensionId, value: item.value }));
   const baseHtml = input.current?.html || input.template.html;
-  const createHtml = async (userPrompt: string) => {
+  const createHtml = async (userPrompt: string, stage: string, attempt: number) => {
     const messages = [{ role: 'system' as const, content: htmlSystemPrompt }, { role: 'user' as const, content: userPrompt }];
-    console.log(`\n========== AI REQUEST MESSAGES (${input.current ? 'refine' : 'generate'}) ==========`);
-    console.log(JSON.stringify(messages, null, 2));
-    console.log('========== END AI REQUEST MESSAGES ==========\n');
-    const completion = await openAiClient().chat.completions.create({
-      model: process.env.OPENAI_MODEL || 'deepseek-chat',
-      temperature: 0.15,
-      max_tokens: Number(process.env.AI_HTML_MAX_TOKENS || 16_384),
+    const result = await observedAiCall({
+      stage,
+      attempt,
       messages,
+      invoke: () => openAiClient().chat.completions.create({
+        model: aiModel(),
+        temperature: 0.15,
+        max_tokens: Number(process.env.AI_HTML_MAX_TOKENS || 16_384),
+        messages,
+      }),
     });
-    if (completion.choices[0]?.finish_reason === 'length') throw new Error('AI输出HTML超出长度限制，请重试或使用输出能力更强的模型');
-    return extractCompleteHtml(completion.choices[0]?.message?.content || '');
+    if (result.finishReason === 'length') throw Object.assign(new Error('AI输出HTML超出长度限制，请重试或使用输出能力更强的模型'), { status: 502, code: 'AI_OUTPUT_TRUNCATED' });
+    try { return extractCompleteHtml(result.content); }
+    catch (error) {
+      logEvent('warn', 'ai.output.invalid', { callId: result.callId, stage, attempt, contentChars: result.content.length, ...errorLogFields(error) });
+      throw Object.assign(error instanceof Error ? error : new Error(String(error)), { status: 502, code: 'AI_INVALID_HTML' });
+    }
   };
   const inspect = (candidate: string) => {
     const validationContext = { requirements: activeRequirements, systemName: input.systemName };
@@ -301,16 +369,17 @@ async function requestAi(input: { systemName: string; version: string; instructi
     return { validation: { ...validation, valid: validation.valid && checkErrors.length === 0, errors: [...validation.errors, ...checkErrors.filter((error) => !validation.errors.includes(error))] }, requirementChecks };
   };
   const applyFeatures = (html: string) => ensureSidebarToggleAccessible(applyFunctionalDimensions(html, appliedDimensions, baseHtml));
-  const initialHtml = applyFeatures(await createHtml(buildHtmlPrompt({ systemName: input.systemName, version: input.version, instruction: input.instruction, dimensions: activeDimensions, decisions: selectedDecisions, requirements: activeRequirements, baseHtml, refining: Boolean(input.current) })));
+  const initialStage = input.current ? 'index.html.refine' : 'index.html.generate';
+  const initialHtml = applyFeatures(await createHtml(buildHtmlPrompt({ systemName: input.systemName, version: input.version, instruction: input.instruction, dimensions: activeDimensions, decisions: selectedDecisions, requirements: activeRequirements, baseHtml, refining: Boolean(input.current) }), initialStage, 1));
   const repaired = await repairUntilValid({
     initialHtml,
     inspect,
     maxAttempts: maxRepairAttempts,
-    repair: async (html, errors) => applyFeatures(await createHtml(buildRepairPrompt(html, errors, selectedDecisions))),
+    repair: async (html, errors, attempt) => applyFeatures(await createHtml(buildRepairPrompt(html, errors, selectedDecisions), 'index.html.repair', attempt)),
   });
   const { html, inspection: inspected } = repaired;
   if (!inspected.validation.valid) {
-    console.error(`AI首页自动修复 ${repaired.attempts} 次后仍未通过：${inspected.validation.errors.join('；')}`);
+    logEvent('error', 'ai.validation.failed', { stage: 'index.html', repairAttempts: repaired.attempts, errors: inspected.validation.errors });
     throw Object.assign(new Error('生成结果暂未通过自动检查，系统已自动重试，请稍后再次生成'), { status: 422 });
   }
   return { html, validation: inspected.validation, requirementChecks: inspected.requirementChecks, activeDimensions, activeRequirements, plan };
@@ -350,14 +419,20 @@ async function requestLoginAi(input: { config: Record<string, unknown>; instruct
   const backgroundImage = String(input.config.backgroundType || '') === '图片通铺' ? String(input.config.backgroundImage || '') : '';
   const promptConfig = { ...input.config, backgroundImage: backgroundImage ? '已上传；使用__LOGIN_BACKGROUND_IMAGE__占位符，由后端注入' : '' };
   const previousHtml = input.current?.html.replace(/data:image\/[a-zA-Z0-9.+-]+;base64,[a-zA-Z0-9+/=]+/g, '__LOGIN_BACKGROUND_IMAGE__');
-  const createHtml = async (prompt: string) => {
+  const createHtml = async (prompt: string, stage: string, attempt: number) => {
     const messages = [{ role: 'system' as const, content: loginSystemPrompt }, { role: 'user' as const, content: prompt }];
-    console.log(`\n========== AI LOGIN REQUEST MESSAGES (${input.current ? 'refine' : 'generate'}) ==========`);
-    console.log(JSON.stringify(messages, null, 2));
-    console.log('========== END AI LOGIN REQUEST MESSAGES ==========\n');
-    const completion = await openAiClient().chat.completions.create({ model: process.env.OPENAI_MODEL || 'deepseek-chat', temperature: 0.15, max_tokens: Number(process.env.AI_HTML_MAX_TOKENS || 16_384), messages });
-    if (completion.choices[0]?.finish_reason === 'length') throw new Error('AI输出登录页超出长度限制，请重试');
-    return extractLoginHtml(completion.choices[0]?.message?.content || '');
+    const result = await observedAiCall({
+      stage,
+      attempt,
+      messages,
+      invoke: () => openAiClient().chat.completions.create({ model: aiModel(), temperature: 0.15, max_tokens: Number(process.env.AI_HTML_MAX_TOKENS || 16_384), messages }),
+    });
+    if (result.finishReason === 'length') throw Object.assign(new Error('AI输出登录页超出长度限制，请重试'), { status: 502, code: 'AI_OUTPUT_TRUNCATED' });
+    try { return extractLoginHtml(result.content); }
+    catch (error) {
+      logEvent('warn', 'ai.output.invalid', { callId: result.callId, stage, attempt, contentChars: result.content.length, ...errorLogFields(error) });
+      throw Object.assign(error instanceof Error ? error : new Error(String(error)), { status: 502, code: 'AI_INVALID_HTML' });
+    }
   };
   const inspect = (candidate: string) => {
     const validation = validateLoginHtml(candidate, input.config, activeRequirements);
@@ -366,15 +441,15 @@ async function requestLoginAi(input: { config: Record<string, unknown>; instruct
     return { validation: { ...validation, valid: validation.valid && checkErrors.length === 0, errors: [...validation.errors, ...checkErrors] }, requirementChecks };
   };
   const repaired = await repairUntilValid({
-    initialHtml: await createHtml(buildLoginPrompt({ config: promptConfig, requirements: promptRequirements, instruction: input.instruction, referenceHtml: input.referenceHtml, previousHtml })),
+    initialHtml: await createHtml(buildLoginPrompt({ config: promptConfig, requirements: promptRequirements, instruction: input.instruction, referenceHtml: input.referenceHtml, previousHtml }), input.current ? 'login.html.refine' : 'login.html.generate', 1),
     inspect,
     maxAttempts: maxRepairAttempts,
-    repair: (html, errors) => createHtml(buildLoginRepairPrompt(html, errors, promptConfig)),
+    repair: (html, errors, attempt) => createHtml(buildLoginRepairPrompt(html, errors, promptConfig), 'login.html.repair', attempt),
   });
   let { html } = repaired;
   const inspected = repaired.inspection;
   if (!inspected.validation.valid) {
-    console.error(`AI登录页自动修复 ${repaired.attempts} 次后仍未通过：${inspected.validation.errors.join('；')}`);
+    logEvent('error', 'ai.validation.failed', { stage: 'login.html', repairAttempts: repaired.attempts, errors: inspected.validation.errors });
     throw Object.assign(new Error('登录页暂未通过自动检查，系统已自动重试，请稍后再次生成'), { status: 422 });
   }
   if (backgroundImage) {
@@ -431,17 +506,33 @@ app.delete('/api/login-generations/:id', (req, res) => { const id = String(req.p
 
 app.post('/api/generate-menu', aiLimiter, asyncRoute(async (req, res) => {
   const systemName = String(req.body?.systemName || '').trim().slice(0, 100); if (!systemName) return void res.status(400).json({ error: '请提供系统名称' });
-  const completion = await openAiClient().chat.completions.create({ model: process.env.OPENAI_MODEL || 'deepseek-chat', temperature: 0.3, response_format: { type: 'json_object' }, messages: [{ role: 'system', content: '只返回JSON：{"menuConfig":[]}，生成3-6个后台业务菜单。' }, { role: 'user', content: systemName }] });
-  const parsed = JSON.parse(completion.choices[0]?.message?.content || '{}') as { menuConfig?: unknown }; res.json({ menuConfig: normalizeMenuConfig(parsed.menuConfig) });
+  const messages = [{ role: 'system' as const, content: '只返回JSON：{"menuConfig":[]}，生成3-6个后台业务菜单。' }, { role: 'user' as const, content: systemName }];
+  const result = await observedAiCall({
+    stage: 'menu.generate',
+    attempt: 1,
+    messages,
+    invoke: () => openAiClient().chat.completions.create({ model: aiModel(), temperature: 0.3, response_format: { type: 'json_object' }, messages }),
+  });
+  try {
+    const normalized = result.content.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+    const parsed = JSON.parse(normalized) as { menuConfig?: unknown };
+    res.json({ menuConfig: normalizeMenuConfig(parsed.menuConfig) });
+  } catch (error) {
+    logEvent('warn', 'ai.output.invalid', { callId: result.callId, stage: 'menu.generate', attempt: 1, contentChars: result.content.length, ...errorLogFields(error) });
+    throw Object.assign(new Error('AI未返回有效的菜单JSON，请稍后重试'), { status: 502, code: 'AI_INVALID_MENU_JSON' });
+  }
 }));
 
 if (isProduction) { const distPath = path.resolve(process.cwd(), 'dist'); app.use(express.static(distPath, { maxAge: '1d', etag: true })); app.get('*', (_req, res) => res.sendFile(path.join(distPath, 'index.html'))); }
 
-app.use((error: Error & { status?: number; type?: string }, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  console.error(error); const status = error.status || (error.type === 'entity.too.large' ? 413 : error instanceof SyntaxError ? 400 : 500);
-  res.status(status).json({ error: status >= 500 && isProduction ? '服务器内部错误' : error.message });
+app.use((error: Error & { status?: number; type?: string }, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  const status = error.status || (error.type === 'entity.too.large' ? 413 : error instanceof SyntaxError ? 400 : 500);
+  const requestId = currentRequestId() || String(res.getHeader('X-Request-Id') || '');
+  logEvent('error', 'http.request.error', { requestId, method: req.method, path: req.originalUrl.split('?')[0], status, ...errorLogFields(error) });
+  const message = status === 502 || status < 500 || !isProduction ? error.message : '服务器内部错误';
+  res.status(status).json({ error: message, requestId });
 });
 
-const server = app.listen(port, '0.0.0.0', () => console.log(`IndexForge listening on http://0.0.0.0:${port}`));
-function shutdown(signal: string) { console.log(`${signal} received, shutting down`); server.close((error) => process.exit(error ? 1 : 0)); setTimeout(() => process.exit(1), 10_000).unref(); }
+const server = app.listen(port, '0.0.0.0', () => logEvent('info', 'server.started', { host: '0.0.0.0', port }));
+function shutdown(signal: string) { logEvent('info', 'server.shutdown', { signal }); server.close((error) => process.exit(error ? 1 : 0)); setTimeout(() => process.exit(1), 10_000).unref(); }
 process.on('SIGTERM', () => shutdown('SIGTERM')); process.on('SIGINT', () => shutdown('SIGINT'));

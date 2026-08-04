@@ -42,8 +42,11 @@ export default function MenuConfigPage({ menuConfig, onChange }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt: aiPrompt }),
       });
-      const payload = (await response.json()) as { menuConfig?: MenuItemConfig[]; error?: string };
-      if (!response.ok || !payload.menuConfig) throw new Error(payload.error || '大模型生成失败');
+      const payload = (await response.json()) as { menuConfig?: MenuItemConfig[]; error?: string; requestId?: string };
+      if (!response.ok || !payload.menuConfig) {
+        const requestId = payload.requestId || response.headers.get('x-request-id');
+        throw new Error(`${payload.error || '大模型生成失败'}${requestId ? `（请求ID：${requestId}）` : ''}`);
+      }
       onChange(payload.menuConfig);
       setAiStatus('大模型菜单已生成并应用。');
     } catch (error) {

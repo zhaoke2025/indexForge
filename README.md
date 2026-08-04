@@ -62,7 +62,7 @@ Electron 可作为后续桌面端封装方案，不作为 Web 端第一版必选
 ```bash
 OPENAI_API_KEY=你的 DeepSeek Key
 OPENAI_BASE_URL=https://api.deepseek.com
-OPENAI_MODEL=deepseek-chat
+OPENAI_MODEL=deepseek-v4-flash
 API_PORT=8787
 ```
 

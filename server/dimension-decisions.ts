@@ -80,7 +80,8 @@ ${input.previous ? `\n【上一版维度方案】\n${JSON.stringify(input.previo
 
 export function parseDimensionPlan(content: string, definitions: DimensionDefinition[]): DimensionPlan {
   let parsed: unknown;
-  try { parsed = JSON.parse(content); } catch { throw new Error('AI未返回有效的维度决策JSON'); }
+  const normalized = content.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  try { parsed = JSON.parse(normalized); } catch { throw new Error('AI未返回有效的维度决策JSON'); }
   const source = parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : {};
   if (!Array.isArray(source.dimensions)) throw new Error('AI维度决策缺少 dimensions 数组');
   const byId = new Map(definitions.map((item) => [item.id, item]));
