@@ -82,6 +82,18 @@ describe('functional HTML dimensions', () => {
     expect(html.indexOf('id="indexForgeUserMenuTrigger"')).toBeGreaterThan(html.indexOf('class="user-meta"'));
   });
 
+  it('keeps the dropdown trigger in one row when AI uses a two-column user menu grid', () => {
+    const source = template.replace('</head>', '<style>.user-menu { display: grid; grid-template-columns: auto 1fr; }</style></head>');
+    const html = applyFunctionalDimensions(source, dropdownDimension);
+    const userMenuRules = [...html.matchAll(/\.user-menu\s*\{([^}]*)\}/g)];
+    const finalRule = userMenuRules.at(-1)?.[1] || '';
+
+    expect(finalRule).toContain('display: flex');
+    expect(finalRule).toContain('flex-direction: row');
+    expect(finalRule).toContain('flex-wrap: nowrap');
+    expect(html.indexOf(finalRule)).toBeGreaterThan(html.indexOf('grid-template-columns: auto 1fr'));
+  });
+
   it('restores the required user structure when AI removes it', () => {
     const source = template.replace(/\s*<div class="user-menu">[\s\S]*?<\/div>\s*<\/div>\s*<i class="fa fa-angle-down text-slate-400"><\/i>\s*<\/div>/, '');
     const html = applyFunctionalDimensions(source, dropdownDimension, template);

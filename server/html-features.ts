@@ -258,7 +258,10 @@ export function applyFunctionalDimensions(html: string, dimensions: FeatureDimen
   if (!output.includes('/* IndexForge user dropdown */')) {
     output = injectBefore(output, '</head>', `<style>
         /* IndexForge user dropdown */
-        .user-menu { position: relative; cursor: pointer; }
+        .user-menu {
+            position: relative; display: flex; flex-direction: row; flex-wrap: nowrap;
+            align-items: center; cursor: pointer;
+        }
         .user-menu-trigger {
             display: inline-flex; align-items: center; justify-content: center;
             width: 26px; height: 26px; padding: 0; border: 0;
