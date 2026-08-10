@@ -8,8 +8,27 @@ function injectAfterBody(html: string, content: string) {
   return html.replace(/<body\b[^>]*>/i, (body) => `${body}\n${content}`);
 }
 
+function findOpeningElementByClass(html: string, className: string, tagName?: string) {
+  const pattern = /<([a-z][\w-]*)\b[^>]*\s+class\s*=\s*(["'])([^"']*)\2[^>]*>/ig;
+  for (let opening = pattern.exec(html); opening; opening = pattern.exec(html)) {
+    if (tagName && opening[1].toLowerCase() !== tagName.toLowerCase()) continue;
+    if (opening[3].split(/\s+/).includes(className)) return opening;
+  }
+  return null;
+}
+
 function hasClassElement(html: string, className: string) {
-  return new RegExp(`<[^>]+class=["'][^"']*\\b${className}\\b[^"']*["'][^>]*>`, 'i').test(html);
+  return Boolean(findOpeningElementByClass(html, className));
+}
+
+function addClassToElement(html: string, existingClass: string, addedClass: string) {
+  const opening = findOpeningElementByClass(html, existingClass);
+  if (!opening || opening.index === undefined || opening[3].split(/\s+/).includes(addedClass)) return html;
+  const updated = opening[0].replace(
+    /(\s+class\s*=\s*)(["'])([^"']*)\2/i,
+    (_attribute, prefix: string, quote: string, classNames: string) => `${prefix}${quote}${classNames} ${addedClass}${quote}`,
+  );
+  return `${html.slice(0, opening.index)}${updated}${html.slice(opening.index + opening[0].length)}`;
 }
 
 function userMenuHtml(html: string) {
@@ -22,7 +41,12 @@ function replaceUserMenu(html: string, replacement: string) {
   return bounds ? `${html.slice(0, bounds.start)}${replacement}${html.slice(bounds.closingEnd)}` : html;
 }
 
+export function ensureUserMenuClass(html: string) {
+  return addClassToElement(html, 'user-menu-wrapper', 'user-menu');
+}
+
 function ensureUserMenu(html: string, userInfo: string, fallbackHtml: string) {
+  html = ensureUserMenuClass(html);
   if (findUserMenu(html)) return html;
   const fallbackUserMenu = userMenuHtml(fallbackHtml);
   if (fallbackUserMenu) return html.replace(/<\/header>/i, `${fallbackUserMenu}\n        </header>`);
@@ -39,7 +63,7 @@ function ensureUserMenu(html: string, userInfo: string, fallbackHtml: string) {
 }
 
 function findUserMenu(html: string) {
-  const opening = /<div[^>]+class=(["'])[^"']*\buser-menu\b[^"']*\1[^>]*>/i.exec(html);
+  const opening = findOpeningElementByClass(html, 'user-menu', 'div');
   if (!opening || opening.index === undefined) return null;
   const start = opening.index;
   const contentStart = start + opening[0].length;
@@ -65,7 +89,7 @@ function updateUserMenu(html: string, update: (content: string) => string) {
 }
 
 function findElementByClass(html: string, className: string) {
-  const opening = new RegExp(`<([a-z][\\w-]*)[^>]+class=(["'])[^"']*\\b${className}\\b[^"']*\\2[^>]*>`, 'i').exec(html);
+  const opening = findOpeningElementByClass(html, className);
   if (!opening || opening.index === undefined) return null;
   const tagName = opening[1];
   const tagPattern = new RegExp(`<\\/?${tagName}\\b[^>]*>`, 'ig');

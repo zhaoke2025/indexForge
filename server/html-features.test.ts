@@ -1,9 +1,10 @@
 import fs from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { applyFunctionalDimensions, ensureReferencedElementAliases, ensureSidebarToggleAccessible } from './html-features.js';
+import { applyFunctionalDimensions, ensureReferencedElementAliases, ensureSidebarToggleAccessible, ensureUserMenuClass } from './html-features.js';
 
 function hasClassElement(html: string, className: string) {
-  return new RegExp(`<[^>]+class=["'][^"']*\\b${className}\\b[^"']*["'][^>]*>`, 'i').test(html);
+  return [...html.matchAll(/<[^>]+\s+class\s*=\s*(["'])([^"']*)\1[^>]*>/gi)]
+    .some((match) => match[2].split(/\s+/).includes(className));
 }
 
 describe('functional HTML dimensions', () => {
@@ -92,6 +93,26 @@ describe('functional HTML dimensions', () => {
     expect(finalRule).toContain('flex-direction: row');
     expect(finalRule).toContain('flex-wrap: nowrap');
     expect(html.indexOf(finalRule)).toBeGreaterThan(html.indexOf('grid-template-columns: auto 1fr'));
+  });
+
+  it('normalizes an AI user-menu-wrapper without treating a partial class name as the menu', () => {
+    const source = template.replace('class="user-menu"', 'class="user-menu-wrapper" id="userMenuWrapper"');
+    const html = applyFunctionalDimensions(source, dropdownDimension, template);
+    const userMenus = [...html.matchAll(/<[^>]+\s+class\s*=\s*(["'])([^"']*)\1[^>]*>/gi)]
+      .filter((match) => match[2].split(/\s+/).includes('user-menu'));
+
+    expect(html).toContain('class="user-menu-wrapper user-menu" id="userMenuWrapper"');
+    expect(userMenus).toHaveLength(1);
+    expect(html).toContain('id="indexForgeUserMenuTrigger"');
+    expect(html).toContain('id="indexForgeUserDropdown"');
+  });
+
+  it('repairs a stored generation containing the legacy user-menu-wrapper class', () => {
+    const source = '<header><div class="user-menu-wrapper" id="userMenuWrapper"><div class="avatar-circle"></div><div class="user-meta"><span class="user-name">系统管理员</span></div></div></header>';
+    const repaired = ensureUserMenuClass(source);
+
+    expect(repaired).toContain('class="user-menu-wrapper user-menu"');
+    expect(ensureUserMenuClass(repaired)).toBe(repaired);
   });
 
   it('restores the required user structure when AI removes it', () => {
