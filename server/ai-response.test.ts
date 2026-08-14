@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { readCompletion } from './ai-response.js';
+import { readCompletion, withoutThinking } from './ai-response.js';
 
 describe('AI completion response', () => {
+  it('disables model thinking while preserving completion parameters', () => {
+    expect(withoutThinking({ model: 'deepseek-v4-flash', max_tokens: 8192 })).toEqual({
+      model: 'deepseek-v4-flash',
+      max_tokens: 8192,
+      thinking: { type: 'disabled' },
+    });
+  });
+
   it('returns content and completion metadata', () => {
     expect(readCompletion({ choices: [{ finish_reason: 'stop', message: { content: 'ok' } }], usage: { total_tokens: 3 } })).toEqual({
       content: 'ok',

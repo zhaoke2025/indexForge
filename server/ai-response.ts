@@ -3,6 +3,10 @@ export type CompletionShape = {
   usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
 };
 
+export function withoutThinking<T extends object>(params: T): T & { thinking: { type: 'disabled' } } {
+  return { ...params, thinking: { type: 'disabled' } };
+}
+
 export function readCompletion(completion: CompletionShape) {
   const choice = completion.choices?.[0];
   const content = choice?.message?.content;

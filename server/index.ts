@@ -21,7 +21,7 @@ import { integrationResponse, integrationSourceGenerationId } from './integratio
 import { repairUntilValid } from './repair-loop.js';
 import { formatBeijingTime } from './time.js';
 import { currentRequestId, errorLogFields, logEvent, withRequestContext } from './observability.js';
-import { readCompletion, type CompletionShape } from './ai-response.js';
+import { readCompletion, withoutThinking, type CompletionShape } from './ai-response.js';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
@@ -304,13 +304,13 @@ async function requestDimensionPlan(input: { systemName: string; instruction: st
       stage: `${input.page}.dimensions`,
       attempt: attempt + 1,
       messages,
-      invoke: () => openAiClient().chat.completions.create({
+      invoke: () => openAiClient().chat.completions.create(withoutThinking({
         model: aiModel(),
         temperature: 0.2,
         max_tokens: Number(process.env.AI_DIMENSION_MAX_TOKENS || 4096),
         response_format: { type: 'json_object' },
         messages,
-      }),
+      })),
     });
     const content = result.content;
     try { return parseDimensionPlan(content, input.dimensions); }
@@ -347,12 +347,12 @@ async function requestAi(input: { systemName: string; version: string; instructi
       stage,
       attempt,
       messages,
-      invoke: () => openAiClient().chat.completions.create({
+      invoke: () => openAiClient().chat.completions.create(withoutThinking({
         model: aiModel(),
         temperature: 0.15,
         max_tokens: Number(process.env.AI_HTML_MAX_TOKENS || 16_384),
         messages,
-      }),
+      })),
     });
     if (result.finishReason === 'length') throw Object.assign(new Error('AI输出HTML超出长度限制，请重试或使用输出能力更强的模型'), { status: 502, code: 'AI_OUTPUT_TRUNCATED' });
     try { return extractCompleteHtml(result.content); }
@@ -425,7 +425,7 @@ async function requestLoginAi(input: { config: Record<string, unknown>; instruct
       stage,
       attempt,
       messages,
-      invoke: () => openAiClient().chat.completions.create({ model: aiModel(), temperature: 0.15, max_tokens: Number(process.env.AI_HTML_MAX_TOKENS || 16_384), messages }),
+      invoke: () => openAiClient().chat.completions.create(withoutThinking({ model: aiModel(), temperature: 0.15, max_tokens: Number(process.env.AI_HTML_MAX_TOKENS || 16_384), messages })),
     });
     if (result.finishReason === 'length') throw Object.assign(new Error('AI输出登录页超出长度限制，请重试'), { status: 502, code: 'AI_OUTPUT_TRUNCATED' });
     try { return extractLoginHtml(result.content); }
@@ -511,7 +511,7 @@ app.post('/api/generate-menu', aiLimiter, asyncRoute(async (req, res) => {
     stage: 'menu.generate',
     attempt: 1,
     messages,
-    invoke: () => openAiClient().chat.completions.create({ model: aiModel(), temperature: 0.3, response_format: { type: 'json_object' }, messages }),
+    invoke: () => openAiClient().chat.completions.create(withoutThinking({ model: aiModel(), temperature: 0.3, response_format: { type: 'json_object' }, messages })),
   });
   try {
     const normalized = result.content.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
