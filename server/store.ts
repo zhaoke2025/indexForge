@@ -214,6 +214,16 @@ export class Store {
         this.db.run('INSERT INTO schema_migrations VALUES (?, ?)', [6, now]);
       });
     }
+    if (!this.get('SELECT version FROM schema_migrations WHERE version=?', [7])) {
+      const logoutRequirement = seedRequirements.find((item) => item[0] === 'R11')!;
+      this.transaction(() => {
+        if (!this.get('SELECT id FROM requirements WHERE id=?', ['R11'])) {
+          this.db.run('INSERT INTO requirements VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)', [...logoutRequirement, 10, now, now]);
+        }
+        this.db.run('UPDATE requirements SET validation_type=?,builtin_validator=?,updated_at=? WHERE id=?', [logoutRequirement[4], logoutRequirement[5], now, 'R11']);
+        this.db.run('INSERT INTO schema_migrations VALUES (?, ?)', [7, now]);
+      });
+    }
     if (this.get('SELECT id FROM templates WHERE id=?', ['default'])) this.run('DELETE FROM templates WHERE id=?', ['default']);
   }
 }

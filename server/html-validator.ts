@@ -198,6 +198,17 @@ function validateBuiltin(html: string, validator: string, context: ValidationCon
     }
   }
   if (validator === 'fixed-theme' && (/<select\b/i.test(html) || html.includes('currentTheme'))) errors.push('检测到主题切换器');
+  if (validator === 'logout-control') {
+    const content = withoutComments(html)
+      .replace(/<(?:script|style|template)\b[^>]*>[\s\S]*?<\/(?:script|style|template)>/gi, ' ');
+    const text = decodeHtmlText(content.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ');
+    const hasLogoutText = /退出(?:登录|系统)/.test(text);
+    const hasLogoutButton = [...content.matchAll(/<(button|a)\b([^>]*)>([\s\S]*?)<\/\1>/gi)].some((match) => {
+      if (/\bhidden\b|aria-hidden\s*=\s*(["'])true\1|display\s*:\s*none/i.test(match[2])) return false;
+      return /logout|sign-out|退出(?:登录|系统)/i.test(`${match[2]} ${decodeHtmlText(match[3].replace(/<[^>]+>/g, ' '))}`);
+    });
+    if (!hasLogoutText && !hasLogoutButton) errors.push('缺少退出登录按钮或文字');
+  }
   if (validator === 'core-js') {
     if (!html.includes('contentFrame')) errors.push('缺少 iframe#contentFrame');
     if (!html.includes('menuConfig')) errors.push('缺少 menuConfig');

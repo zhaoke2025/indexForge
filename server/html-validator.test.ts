@@ -85,6 +85,16 @@ describe('server HTML validator', () => {
     expect(validateRequirementChecks(template, [{ id: 'custom', validationType: 'builtin' }])[0]).toEqual({ requirementId: 'custom', passed: false, detail: '未配置可执行的内置校验器' });
   });
 
+  it('requires a real logout control for R11', () => {
+    const requirement = [{ id: 'R11', validationType: 'builtin', builtinValidator: 'logout-control' }];
+    expect(validateRequirementChecks('<html><body><button id="logoutBtn" aria-label="退出登录"></button></body></html>', requirement)[0].passed).toBe(true);
+    expect(validateRequirementChecks('<html><body><script>console.log("退出登录")</script></body></html>', requirement)[0]).toEqual({
+      requirementId: 'R11',
+      passed: false,
+      detail: '缺少退出登录按钮或文字',
+    });
+  });
+
   it('does not treat a business menu named 供应商开发中心 as a placeholder', () => {
     expect(validateHtml(template.replace('企业运营管理平台', '供应商开发中心')).valid).toBe(true);
   });

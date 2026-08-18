@@ -139,6 +139,7 @@ describe('functional HTML dimensions', () => {
     const dimensions = [{ id: 'userInfo', value: '移除用户' }];
     const html = applyFunctionalDimensions(template, dimensions);
     expect(hasClassElement(html, 'user-menu')).toBe(false);
+    expect(html).toContain('id="logoutBtn"');
   });
 
   it('keeps only the avatar and a functional logout button when requested', () => {
@@ -151,6 +152,25 @@ describe('functional HTML dimensions', () => {
     expect(html).toContain('id="logoutBtn"');
     expect(html).toContain('退出登录');
     expect(html).toContain('function bindIndexForgeLogoutButton');
+  });
+
+  it('treats 无下拉 as an explicit request to remove the dropdown', () => {
+    const dimensions = [{ id: 'userInfo', value: '头像+无下拉+退出登录' }];
+    const html = applyFunctionalDimensions(template, dimensions, template);
+    expect(hasClassElement(html, 'user-dropdown')).toBe(false);
+    expect(html).not.toContain('修改密码');
+    expect(html).toContain('id="logoutBtn"');
+  });
+
+  it('uses the logout dimension to place logout outside the dropdown', () => {
+    const dimensions = [
+      { id: 'userInfo', value: '头像+姓名+下拉' },
+      { id: 'logout', value: '头像右侧紧挨着顶栏最右侧' },
+    ];
+    const html = applyFunctionalDimensions(template, dimensions, template);
+    expect(hasClassElement(html, 'user-dropdown')).toBe(true);
+    expect(html).toContain('id="logoutBtn"');
+    expect(html).not.toContain('data-user-action="logout"');
   });
 
   it.each(userInfoCases)('applies user info shape %s', (value, hasAvatar, hasName, hasRole, hasDropdown) => {

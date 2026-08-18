@@ -60,7 +60,7 @@ describe('SQLite store', () => {
     });
     expect(reopened.get<{ name: string; validation_type: string }>('SELECT name,validation_type FROM requirements WHERE id=?', ['R11'])).toEqual({
       name: '退出系统',
-      validation_type: 'ai',
+      validation_type: 'builtin',
     });
   });
 
@@ -72,5 +72,17 @@ describe('SQLite store', () => {
     const reopened = await Store.open();
     expect(reopened.get<{ description: string }>('SELECT description FROM login_dimensions WHERE id=?', ['layout'])?.description).toContain('登录卡片外');
     expect(reopened.get<{ description: string }>('SELECT description FROM login_requirements WHERE id=?', ['LR1'])?.description).toContain('页面左侧独立品牌区');
+  });
+
+  it('upgrades an existing R11 rule to builtin validation', async () => {
+    const store = await Store.open();
+    store.run('UPDATE requirements SET description=?,validation_type=?,builtin_validator=NULL WHERE id=?', ['保留的自定义说明', 'ai', 'R11']);
+    store.run('DELETE FROM schema_migrations WHERE version=?', [7]);
+    const reopened = await Store.open();
+    expect(reopened.get<{ description: string; validation_type: string; builtin_validator: string }>('SELECT description,validation_type,builtin_validator FROM requirements WHERE id=?', ['R11'])).toEqual({
+      description: '保留的自定义说明',
+      validation_type: 'builtin',
+      builtin_validator: 'logout-control',
+    });
   });
 });

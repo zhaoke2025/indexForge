@@ -44,7 +44,7 @@ export const seedRequirements = [
   ['R8', '核心 JS 逻辑', 'menuConfig 数据、renderPrimaryMenu、renderSubMenu、navigateTo、message 监听等核心功能逻辑不能改动，只能调整视觉样式类。', 'required', 'builtin', 'core-js'],
   ['R9', '用户信息', '用户名和头像可以自由变化（改名、改图标、加标签、甚至完全移除），不受限制。用户名长度遵循实体要求。', 'flexible', 'ai', null],
   ['R10', '禁止出现无关数据', '无论是侧边栏还是顶栏，都禁止出现统计数字和版本号。', 'required', 'ai', null],
-  ['R11', '退出系统', '无论是在用户名头像下拉中退出登录，还是在顶栏最右侧或侧边栏最底部，都必须有退出登录的按钮或者文字。', 'required', 'ai', null],
+  ['R11', '退出系统', '无论是在用户名头像下拉中退出登录，还是在顶栏最右侧或侧边栏最底部，都必须有退出登录的按钮或者文字。', 'required', 'builtin', 'logout-control'],
 ] as const;
 export const seedLoginDimensions: SeedDimension[] = [
   { id: 'layout', name: '登录框位置', groupName: '布局', description: '登录卡片在视口中的位置；偏右时必须在登录卡片外的页面左侧独立展示系统标题。', valueType: 'single-select', options: ['居中', '偏右'] },

@@ -147,6 +147,41 @@ function legacyUserDropdownIds(html: string) {
   return [...ids];
 }
 
+function ensureDirectLogoutBehavior(html: string) {
+  let output = html;
+  if (!output.includes('/* IndexForge direct logout */')) {
+    output = injectBefore(output, '</head>', `<style>
+        /* IndexForge direct logout */
+        .indexforge-logout-button {
+            display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+            min-height: 34px; padding: 0 10px; border: 0; border-radius: 6px;
+            color: #DC2626; background: transparent; cursor: pointer;
+        }
+        .indexforge-logout-button:hover { background: #FEE2E2; }
+    </style>`);
+  }
+  if (!output.includes('function bindIndexForgeLogoutButton') && !/getElementById\(\s*['"]logoutBtn['"]\s*\)\s*\.addEventListener/i.test(output)) {
+    output = injectBefore(output, '</body>', `<script>
+        function bindIndexForgeLogoutButton() {
+            const logoutButton = document.getElementById('logoutBtn');
+            if (!logoutButton) return;
+            logoutButton.addEventListener('click', function() {
+                const redirectToLogin = function() { window.location.href = 'login.html'; };
+                if (typeof window.showConfirm === 'function') {
+                    Promise.resolve(window.showConfirm('退出系统', '确定要退出登录吗？', '确定', '取消')).then(function(result) {
+                        if (result) redirectToLogin();
+                    });
+                    return;
+                }
+                if (window.confirm('确定要退出登录吗？')) redirectToLogin();
+            });
+        }
+        bindIndexForgeLogoutButton();
+    </script>`);
+  }
+  return output;
+}
+
 export function ensureReferencedElementAliases(html: string) {
   const aliasIds = new Set<string>();
   const withoutAliases = html.replace(/<button\s+id=(["'])([A-Za-z][\w:.-]*)\1\s+type=(["'])button\3\s+hidden><\/button>\s*/gi, (_element, _quote, id: string) => {
@@ -186,9 +221,12 @@ export function ensureSidebarToggleAccessible(html: string) {
 
 export function applyFunctionalDimensions(html: string, dimensions: FeatureDimension[], fallbackHtml = '') {
   const userInfo = dimensions.find((item) => item.id === 'userInfo')?.value;
+  const logout = dimensions.find((item) => item.id === 'logout')?.value;
   if (userInfo === '移除用户') {
     const bounds = findUserMenu(html);
-    return bounds ? `${html.slice(0, bounds.start)}${html.slice(bounds.closingEnd)}` : html;
+    const withoutUser = bounds ? `${html.slice(0, bounds.start)}${html.slice(bounds.closingEnd)}` : html;
+    const withLogout = withoutUser.replace(/<\/header>/i, '<button class="btn-logout indexforge-logout-button" id="logoutBtn" type="button"><i class="fa fa-sign-out"></i><span>退出登录</span></button>\n        </header>');
+    return ensureDirectLogoutBehavior(withLogout);
   }
   if (typeof userInfo !== 'string') return html;
 
@@ -198,8 +236,11 @@ export function applyFunctionalDimensions(html: string, dimensions: FeatureDimen
   const showAvatar = userInfo.includes('头像');
   const showName = userInfo.includes('姓名') || userInfo.includes('用户名');
   const showRole = userInfo.includes('角色');
-  const showDropdown = userInfo.includes('下拉');
-  const showDirectLogout = userInfo.includes('退出登录按钮');
+  const explicitlyNoDropdown = userInfo.includes('无下拉');
+  const logoutInDropdown = typeof logout === 'string' && logout.includes('下拉菜单');
+  const logoutOutsideDropdown = typeof logout === 'string' && /头像右侧|顶栏最右侧|侧边栏最底部|单独/.test(logout);
+  const showDropdown = !explicitlyNoDropdown && (userInfo.includes('下拉') || logoutInDropdown);
+  const showDirectLogout = !showDropdown || logoutOutsideDropdown;
   const missingRequiredElement = (showName && !hasClassElement(html, 'user-name'))
     || (showAvatar && !hasClassElement(html, 'avatar-circle'))
     || (showRole && !hasClassElement(html, 'user-role'));
@@ -232,38 +273,7 @@ export function applyFunctionalDimensions(html: string, dimensions: FeatureDimen
     return next;
   });
 
-  if (showDirectLogout) {
-    if (!output.includes('/* IndexForge direct logout */')) {
-      output = injectBefore(output, '</head>', `<style>
-        /* IndexForge direct logout */
-        .indexforge-logout-button {
-            display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-            min-height: 34px; padding: 0 10px; border: 0; border-radius: 6px;
-            color: #DC2626; background: transparent; cursor: pointer;
-        }
-        .indexforge-logout-button:hover { background: #FEE2E2; }
-    </style>`);
-    }
-    if (!output.includes('function bindIndexForgeLogoutButton') && !/getElementById\(\s*['"]logoutBtn['"]\s*\)\s*\.addEventListener/i.test(output)) {
-      output = injectBefore(output, '</body>', `<script>
-        function bindIndexForgeLogoutButton() {
-            const logoutButton = document.getElementById('logoutBtn');
-            if (!logoutButton) return;
-            logoutButton.addEventListener('click', function() {
-                const redirectToLogin = function() { window.location.href = 'login.html'; };
-                if (typeof window.showConfirm === 'function') {
-                    Promise.resolve(window.showConfirm('退出系统', '确定要退出登录吗？', '确定', '取消')).then(function(result) {
-                        if (result) redirectToLogin();
-                    });
-                    return;
-                }
-                if (window.confirm('确定要退出登录吗？')) redirectToLogin();
-            });
-        }
-        bindIndexForgeLogoutButton();
-    </script>`);
-    }
-  }
+  if (showDirectLogout) output = ensureDirectLogoutBehavior(output);
 
   if (!showDropdown) return output;
 
@@ -271,7 +281,7 @@ export function applyFunctionalDimensions(html: string, dimensions: FeatureDimen
                 <button class="user-menu-trigger" id="indexForgeUserMenuTrigger" type="button" aria-label="打开用户菜单"><i class="fa fa-angle-down"></i></button>
                 <div class="user-dropdown" id="indexForgeUserDropdown">
                     <button class="user-dropdown-item" type="button" data-user-action="change-password"><i class="fa fa-key"></i><span>修改密码</span></button>
-                    <button class="user-dropdown-item danger" type="button" data-user-action="logout"><i class="fa fa-sign-out"></i><span>退出登录</span></button>
+                    ${showDirectLogout ? '' : '<button class="user-dropdown-item danger" type="button" data-user-action="logout"><i class="fa fa-sign-out"></i><span>退出登录</span></button>'}
                 </div>`);
 
   if (legacyIds.length) {
