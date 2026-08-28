@@ -95,6 +95,17 @@ describe('server HTML validator', () => {
     });
   });
 
+  it('rejects duplicate visible logout controls for R11', () => {
+    const requirement = [{ id: 'R11', validationType: 'builtin', builtinValidator: 'logout-control' }];
+    const html = '<html><body><button>退出登录</button><button aria-label="logout">退出登录</button></body></html>';
+
+    expect(validateRequirementChecks(html, requirement)[0]).toEqual({
+      requirementId: 'R11',
+      passed: false,
+      detail: '退出登录入口只能保留一个',
+    });
+  });
+
   it('does not treat a business menu named 供应商开发中心 as a placeholder', () => {
     expect(validateHtml(template.replace('企业运营管理平台', '供应商开发中心')).valid).toBe(true);
   });

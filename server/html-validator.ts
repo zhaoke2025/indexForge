@@ -26,6 +26,15 @@ function decodeHtmlText(value: string) {
   });
 }
 
+export function countVisibleLogoutControls(html: string) {
+  const content = withoutComments(html)
+    .replace(/<(?:script|style|template)\b[^>]*>[\s\S]*?<\/(?:script|style|template)>/gi, ' ');
+  return [...content.matchAll(/<(button|a)\b([^>]*)>([\s\S]*?)<\/\1>/gi)].filter((match) => {
+    if (/\bhidden\b|aria-hidden\s*=\s*(["'])true\1|display\s*:\s*none/i.test(match[2])) return false;
+    return /logout|sign-out|退出(?:登录|系统)/i.test(`${match[2]} ${decodeHtmlText(match[3].replace(/<[^>]+>/g, ' '))}`);
+  }).length;
+}
+
 function containingElementInner(html: string, position: number) {
   const voidTags = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
   const stack: Array<{ tag: string; openEnd: number }> = [];
@@ -203,11 +212,9 @@ function validateBuiltin(html: string, validator: string, context: ValidationCon
       .replace(/<(?:script|style|template)\b[^>]*>[\s\S]*?<\/(?:script|style|template)>/gi, ' ');
     const text = decodeHtmlText(content.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ');
     const hasLogoutText = /退出(?:登录|系统)/.test(text);
-    const hasLogoutButton = [...content.matchAll(/<(button|a)\b([^>]*)>([\s\S]*?)<\/\1>/gi)].some((match) => {
-      if (/\bhidden\b|aria-hidden\s*=\s*(["'])true\1|display\s*:\s*none/i.test(match[2])) return false;
-      return /logout|sign-out|退出(?:登录|系统)/i.test(`${match[2]} ${decodeHtmlText(match[3].replace(/<[^>]+>/g, ' '))}`);
-    });
-    if (!hasLogoutText && !hasLogoutButton) errors.push('缺少退出登录按钮或文字');
+    const logoutControlCount = countVisibleLogoutControls(content);
+    if (logoutControlCount > 1) errors.push('退出登录入口只能保留一个');
+    else if (!hasLogoutText && logoutControlCount === 0) errors.push('缺少退出登录按钮或文字');
   }
   if (validator === 'core-js') {
     if (!html.includes('contentFrame')) errors.push('缺少 iframe#contentFrame');

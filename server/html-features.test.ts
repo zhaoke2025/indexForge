@@ -173,6 +173,32 @@ describe('functional HTML dimensions', () => {
     expect(html).not.toContain('data-user-action="logout"');
   });
 
+  it('keeps one AI-generated direct logout control instead of adding a duplicate', () => {
+    const source = template.replace(
+      '<i class="fa fa-angle-down text-slate-400"></i>',
+      '<button class="logout-btn-inline" id="inlineLogoutBtn" type="button"><i class="fa fa-sign-out"></i><span>退出登录</span></button>',
+    );
+    const dimensions = [
+      { id: 'userInfo', value: '头像+无下拉+退出登录按钮' },
+      { id: 'logout', value: '头像右侧紧挨着顶栏最右侧' },
+    ];
+    const html = applyFunctionalDimensions(source, dimensions, template);
+    const visibleLogoutControls = [...html.matchAll(/<(button|a)\b([^>]*)>([\s\S]*?)<\/\1>/gi)]
+      .filter((match) => !/\bhidden\b/i.test(match[2]) && /退出登录/.test(match[3]));
+
+    expect(visibleLogoutControls).toHaveLength(1);
+    expect(html).toContain('id="inlineLogoutBtn"');
+    expect(html).not.toContain('indexforge-logout-button');
+  });
+
+  it('uses a gray fallback when a direct logout control must be added', () => {
+    const dimensions = [{ id: 'userInfo', value: '头像+退出登录按钮' }];
+    const html = applyFunctionalDimensions(template, dimensions, template);
+
+    expect(html).toContain('color: #64748B');
+    expect(html).not.toContain('color: #DC2626');
+  });
+
   it.each(userInfoCases)('applies user info shape %s', (value, hasAvatar, hasName, hasRole, hasDropdown) => {
     const dimensions = [{ id: 'userInfo', value }];
     const html = applyFunctionalDimensions(template, dimensions);

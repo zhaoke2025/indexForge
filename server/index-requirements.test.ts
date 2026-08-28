@@ -15,4 +15,17 @@ describe('protected index requirements', () => {
     ]);
     expect(result.map((item) => item.id)).toContain('R4');
   });
+
+  it('always enforces R11 with the built-in logout validator', () => {
+    const requirements = [
+      { id: 'R11', name: '退出系统', description: '保留一个退出入口', level: 'required', validationType: 'ai', enabled: false, sortOrder: 9 },
+    ];
+
+    const result = enforcedIndexRequirements(requirements);
+    expect(result.find((item) => item.id === 'R11')).toMatchObject({
+      validationType: 'builtin',
+      builtinValidator: 'logout-control',
+      enabled: true,
+    });
+  });
 });

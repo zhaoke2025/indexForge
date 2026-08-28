@@ -1,3 +1,5 @@
+import { countVisibleLogoutControls } from './html-validator.js';
+
 type FeatureDimension = { id: string; value: unknown };
 
 function injectBefore(html: string, marker: string, content: string) {
@@ -155,9 +157,9 @@ function ensureDirectLogoutBehavior(html: string) {
         .indexforge-logout-button {
             display: inline-flex; align-items: center; justify-content: center; gap: 6px;
             min-height: 34px; padding: 0 10px; border: 0; border-radius: 6px;
-            color: #DC2626; background: transparent; cursor: pointer;
+            color: #64748B; background: transparent; cursor: pointer;
         }
-        .indexforge-logout-button:hover { background: #FEE2E2; }
+        .indexforge-logout-button:hover { color: #475569; background: #F1F5F9; }
     </style>`);
   }
   if (!output.includes('function bindIndexForgeLogoutButton') && !/getElementById\(\s*['"]logoutBtn['"]\s*\)\s*\.addEventListener/i.test(output)) {
@@ -267,13 +269,13 @@ export function applyFunctionalDimensions(html: string, dimensions: FeatureDimen
     if (showDropdown || showDirectLogout) {
       next = removeElementByClass(removeElementById(next, 'logoutBtn'), 'btn-logout');
     }
-    if (showDirectLogout) {
+    if (showDirectLogout && countVisibleLogoutControls(next) === 0) {
       next += '<button class="btn-logout indexforge-logout-button" id="logoutBtn" type="button"><i class="fa fa-sign-out"></i><span>退出登录</span></button>';
     }
     return next;
   });
 
-  if (showDirectLogout) output = ensureDirectLogoutBehavior(output);
+  if (showDirectLogout && /\bid=(["'])logoutBtn\1/i.test(output)) output = ensureDirectLogoutBehavior(output);
 
   if (!showDropdown) return output;
 
