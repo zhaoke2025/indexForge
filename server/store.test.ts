@@ -85,4 +85,14 @@ describe('SQLite store', () => {
       builtin_validator: 'logout-control',
     });
   });
+
+  it('adds no-dropdown variants without replacing customized user info options', async () => {
+    const store = await Store.open();
+    store.run('UPDATE dimensions SET options_json=? WHERE id=?', [JSON.stringify(['头像+无下拉+退出登录按钮', '头像+用户名+下拉']), 'userInfo']);
+    store.run('DELETE FROM schema_migrations WHERE version=?', [8]);
+    const reopened = await Store.open();
+    const row = reopened.get<{ options_json: string }>('SELECT options_json FROM dimensions WHERE id=?', ['userInfo']);
+
+    expect(JSON.parse(row!.options_json)).toEqual(['头像+无下拉+退出登录按钮', '头像+用户名+下拉', '头像+用户名']);
+  });
 });

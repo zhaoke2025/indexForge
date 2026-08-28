@@ -224,6 +224,19 @@ export class Store {
         this.db.run('INSERT INTO schema_migrations VALUES (?, ?)', [7, now]);
       });
     }
+    if (!this.get('SELECT version FROM schema_migrations WHERE version=?', [8])) {
+      const userInfo = this.get<{ options_json: string }>('SELECT options_json FROM dimensions WHERE id=?', ['userInfo']);
+      const options = userInfo ? JSON.parse(userInfo.options_json) as unknown : [];
+      const expandedOptions = Array.isArray(options) ? options.map(String) : [];
+      for (const option of [...expandedOptions]) {
+        const withoutDropdown = option.replace(/\+下拉$/, '');
+        if (withoutDropdown !== option && !expandedOptions.includes(withoutDropdown)) expandedOptions.push(withoutDropdown);
+      }
+      this.transaction(() => {
+        if (userInfo) this.db.run('UPDATE dimensions SET options_json=?,updated_at=? WHERE id=?', [JSON.stringify(expandedOptions), now, 'userInfo']);
+        this.db.run('INSERT INTO schema_migrations VALUES (?, ?)', [8, now]);
+      });
+    }
     if (this.get('SELECT id FROM templates WHERE id=?', ['default'])) this.run('DELETE FROM templates WHERE id=?', ['default']);
   }
 }

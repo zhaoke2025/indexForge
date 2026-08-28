@@ -27,17 +27,17 @@ describe('AI dimension decisions', () => {
 
   it('forces a user dropdown removal requested during refinement', () => {
     const userDefinitions: DimensionDefinition[] = [
-      { id: 'userInfo', name: '用户信息', group: '顶栏', description: '', valueType: 'single-select', options: ['头像+姓名+下拉', '头像+姓名'] },
+      { id: 'userInfo', name: '用户信息', group: '顶栏', description: '', valueType: 'single-select', options: ['头像+无下拉+退出登录按钮', '头像+用户名+下拉', '头像+用户名'] },
       { id: 'logout', name: '退出登录', group: '顶栏', description: '', valueType: 'single-select', options: ['用户信息下拉菜单', '头像右侧紧挨着顶栏最右侧'] },
     ];
     const previous = [
-      { dimensionId: 'userInfo', applied: true, value: '头像+姓名+下拉', reason: '' },
+      { dimensionId: 'userInfo', applied: true, value: '头像+用户名+下拉', reason: '' },
       { dimensionId: 'logout', applied: true, value: '用户信息下拉菜单', reason: '' },
     ];
     const decisions = previous.map((item) => ({ ...item }));
     const result = applyExplicitDimensionOverrides('取消下拉菜单和下拉箭头，只在头像右侧显示退出登录', decisions, userDefinitions, previous);
 
-    expect(result.find((item) => item.dimensionId === 'userInfo')?.value).toBe('头像+姓名');
+    expect(result.find((item) => item.dimensionId === 'userInfo')?.value).toBe('头像+用户名');
     expect(result.find((item) => item.dimensionId === 'logout')?.value).toBe('头像右侧紧挨着顶栏最右侧');
   });
 
