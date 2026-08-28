@@ -8,7 +8,7 @@ import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 import OpenAI from 'openai';
 import { buildHtmlPrompt, buildRepairPrompt, extractCompleteHtml, htmlSystemPrompt } from './ai-html.js';
-import { appliedDimensionDecisions, buildDimensionDecisionPrompt, parseDimensionPlan, type DimensionDecision, type DimensionDefinition } from './dimension-decisions.js';
+import { appliedDimensionDecisions, applyExplicitDimensionOverrides, buildDimensionDecisionPrompt, parseDimensionPlan, type DimensionDecision, type DimensionDefinition } from './dimension-decisions.js';
 import { applyFunctionalDimensions, ensureReferencedElementAliases, ensureSidebarToggleAccessible, ensureUserMenuClass } from './html-features.js';
 import { validateHtml, validateRequirementChecks } from './html-validator.js';
 import { buildLoginPrompt, buildLoginRepairPrompt, extractLoginHtml, loginSystemPrompt, validateLoginHtml, validateLoginRequirementChecks } from './login-ai.js';
@@ -338,6 +338,7 @@ async function requestAi(input: { systemName: string; version: string; instructi
   const activeDimensionIds = new Set(activeDimensions.map((item) => item.id));
   const previousDecisions = input.current ? parseJson<DimensionDecision[]>(input.current.decisions_json, []).filter((item) => activeDimensionIds.has(item.dimensionId)) : undefined;
   const plan = await requestDimensionPlan({ systemName: input.systemName, instruction: input.instruction, dimensions: activeDimensions, page: 'index', previous: previousDecisions });
+  plan.dimensions = applyExplicitDimensionOverrides(input.instruction, plan.dimensions, activeDimensions, previousDecisions);
   const selectedDecisions = appliedDimensionDecisions(plan.dimensions);
   const appliedDimensions = selectedDecisions.map((item) => ({ id: item.dimensionId, value: item.value }));
   const baseHtml = input.current?.html || input.template.html;
@@ -362,7 +363,7 @@ async function requestAi(input: { systemName: string; version: string; instructi
     }
   };
   const inspect = (candidate: string) => {
-    const validationContext = { requirements: activeRequirements, systemName: input.systemName };
+    const validationContext = { requirements: activeRequirements, systemName: input.systemName, dimensions: appliedDimensions };
     const validation = validateHtml(candidate, validationContext);
     const requirementChecks = validateRequirementChecks(candidate, activeRequirements, validationContext);
     const checkErrors = requirementChecks.filter((item) => !item.passed).map((item) => `${item.requirementId}：${item.detail}`);

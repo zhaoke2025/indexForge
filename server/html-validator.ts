@@ -1,6 +1,6 @@
 export type ValidationResult = { valid: boolean; errors: string[]; warnings: string[] };
 export type ValidationRequirement = { id: string; validationType: string; builtinValidator?: string };
-type ValidationContext = { requirements?: ValidationRequirement[]; systemName?: string };
+type ValidationContext = { requirements?: ValidationRequirement[]; systemName?: string; dimensions?: Array<{ id: string; value: unknown }> };
 export type RequirementCheck = { requirementId: string; passed: boolean; detail: string };
 
 function hasPlaceholderText(html: string, text: string) {
@@ -242,6 +242,12 @@ export function validateHtml(html: string, context: ValidationContext = {}): Val
     ? context.requirements.filter((item) => item.validationType === 'builtin' && item.builtinValidator).map((item) => item.builtinValidator!)
     : defaultBuiltinValidators;
   const errors = validators.flatMap((validator) => validateBuiltin(html, validator, context));
+  const userInfo = context.dimensions?.find((item) => item.id === 'userInfo')?.value;
+  if (typeof userInfo === 'string' && !userInfo.includes('下拉')) {
+    const hasUserDropdown = [...html.matchAll(/<[a-z][\w-]*\b[^>]*\s+class\s*=\s*(["'])([^"']*)\1[^>]*>/gi)]
+      .some((match) => match[2].split(/\s+/).some((className) => ['user-menu-trigger', 'user-menu-arrow', 'user-dropdown'].includes(className)));
+    if (hasUserDropdown) errors.push('用户信息要求无下拉菜单，但页面仍存在下拉触发器或菜单');
+  }
   const warnings: string[] = [];
   return { valid: errors.length === 0, errors, warnings };
 }

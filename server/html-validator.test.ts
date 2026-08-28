@@ -118,4 +118,13 @@ describe('server HTML validator', () => {
   it('does not perform backend validation for dimensions', () => {
     expect(validateHtml(template, { requirements: [] }).valid).toBe(true);
   });
+
+  it('rejects a remaining user dropdown when the selected shape has no dropdown', () => {
+    const result = validateHtml('<html><body><div class="user-menu"><button class="user-menu-trigger"></button><div class="user-dropdown"></div></div></body></html>', {
+      requirements: [],
+      dimensions: [{ id: 'userInfo', value: '头像+姓名' }],
+    });
+
+    expect(result.errors).toContain('用户信息要求无下拉菜单，但页面仍存在下拉触发器或菜单');
+  });
 });

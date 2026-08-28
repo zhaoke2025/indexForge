@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildDimensionDecisionPrompt, parseDimensionPlan, type DimensionDefinition } from './dimension-decisions.js';
+import { applyExplicitDimensionOverrides, buildDimensionDecisionPrompt, parseDimensionPlan, type DimensionDefinition } from './dimension-decisions.js';
 
 const definitions: DimensionDefinition[] = [
   { id: 'mode', name: '明暗模式', group: '视觉', description: '页面明暗关系', valueType: 'single-select', options: ['浅色', '深色'] },
@@ -23,6 +23,31 @@ describe('AI dimension decisions', () => {
     expect(prompt).toContain('【可用资源（仅表示可以使用，不代表用户要求采用）】\n已上传一张可用的登录页背景图片');
     expect(prompt).toContain('不得被上一版方案、母版或可用资源覆盖');
     expect(prompt).toContain('不要因为资源存在就自动选择对应维度');
+  });
+
+  it('forces a user dropdown removal requested during refinement', () => {
+    const userDefinitions: DimensionDefinition[] = [
+      { id: 'userInfo', name: '用户信息', group: '顶栏', description: '', valueType: 'single-select', options: ['头像+姓名+下拉', '头像+姓名'] },
+      { id: 'logout', name: '退出登录', group: '顶栏', description: '', valueType: 'single-select', options: ['用户信息下拉菜单', '头像右侧紧挨着顶栏最右侧'] },
+    ];
+    const previous = [
+      { dimensionId: 'userInfo', applied: true, value: '头像+姓名+下拉', reason: '' },
+      { dimensionId: 'logout', applied: true, value: '用户信息下拉菜单', reason: '' },
+    ];
+    const decisions = previous.map((item) => ({ ...item }));
+    const result = applyExplicitDimensionOverrides('取消下拉菜单和下拉箭头，只在头像右侧显示退出登录', decisions, userDefinitions, previous);
+
+    expect(result.find((item) => item.dimensionId === 'userInfo')?.value).toBe('头像+姓名');
+    expect(result.find((item) => item.dimensionId === 'logout')?.value).toBe('头像右侧紧挨着顶栏最右侧');
+  });
+
+  it('does not treat a sidebar submenu request as a user dropdown change', () => {
+    const userDefinitions: DimensionDefinition[] = [
+      { id: 'userInfo', name: '用户信息', group: '顶栏', description: '', valueType: 'single-select', options: ['头像+姓名+下拉', '头像+姓名'] },
+    ];
+    const decisions = [{ dimensionId: 'userInfo', applied: true, value: '头像+姓名+下拉', reason: '' }];
+
+    expect(applyExplicitDimensionOverrides('去掉侧边栏子菜单的下拉效果', decisions, userDefinitions)).toEqual(decisions);
   });
 
   it('parses and validates selected dimension values', () => {

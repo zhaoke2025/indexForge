@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { applyFunctionalDimensions, ensureReferencedElementAliases, ensureSidebarToggleAccessible, ensureUserMenuClass } from './html-features.js';
+import { countVisibleLogoutControls } from './html-validator.js';
 
 function hasClassElement(html: string, className: string) {
   return [...html.matchAll(/<[^>]+\s+class\s*=\s*(["'])([^"']*)\1[^>]*>/gi)]
@@ -159,7 +160,7 @@ describe('functional HTML dimensions', () => {
     const html = applyFunctionalDimensions(template, dimensions, template);
     expect(hasClassElement(html, 'user-dropdown')).toBe(false);
     expect(html).not.toContain('修改密码');
-    expect(html).toContain('id="logoutBtn"');
+    expect(countVisibleLogoutControls(html)).toBe(1);
   });
 
   it('uses the logout dimension to place logout outside the dropdown', () => {
@@ -171,6 +172,20 @@ describe('functional HTML dimensions', () => {
     expect(hasClassElement(html, 'user-dropdown')).toBe(true);
     expect(html).toContain('id="logoutBtn"');
     expect(html).not.toContain('data-user-action="logout"');
+  });
+
+  it('removes the dropdown while keeping one direct logout control', () => {
+    const dimensions = [
+      { id: 'userInfo', value: '头像+姓名' },
+      { id: 'logout', value: '头像右侧紧挨着顶栏最右侧' },
+    ];
+    const html = applyFunctionalDimensions(template, dimensions, template);
+
+    expect(hasClassElement(html, 'user-menu-trigger')).toBe(false);
+    expect(hasClassElement(html, 'user-menu-arrow')).toBe(false);
+    expect(hasClassElement(html, 'user-dropdown')).toBe(false);
+    expect(html).not.toContain('修改密码');
+    expect(html).toContain('id="logoutBtn"');
   });
 
   it('keeps one AI-generated direct logout control instead of adding a duplicate', () => {

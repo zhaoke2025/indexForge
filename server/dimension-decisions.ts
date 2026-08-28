@@ -46,6 +46,53 @@ export function appliedDimensionDecisions(decisions: DimensionDecision[]): Appli
   return decisions.filter((item): item is AppliedDimensionDecision => item.applied === true && item.value !== null);
 }
 
+export function applyExplicitDimensionOverrides(
+  instruction: string,
+  decisions: DimensionDecision[],
+  definitions: DimensionDefinition[],
+  previous: DimensionDecision[] = [],
+) {
+  const requestsDropdownRemoval = /(?:取消|去掉|移除|删除|不要|关闭)[^。；;\n]{0,12}(?:下拉菜单|下拉箭头)|(?:下拉菜单|下拉箭头)[^。；;\n]{0,12}(?:取消|去掉|移除|删除|不要|关闭)/.test(instruction);
+  const targetsUserArea = /头像|用户(?:信息|名)?|右上角|顶栏|退出登录/.test(instruction);
+  const targetsNavigation = /侧边栏|一级菜单|二级菜单|子菜单/.test(instruction);
+  const removeUserDropdown = requestsDropdownRemoval && targetsUserArea && !targetsNavigation;
+  if (!removeUserDropdown) return decisions;
+
+  const definitionsById = new Map(definitions.map((item) => [item.id, item]));
+  const previousById = new Map(previous.map((item) => [item.dimensionId, item]));
+  return decisions.map((decision) => {
+    if (decision.dimensionId === 'userInfo') {
+      const definition = definitionsById.get('userInfo');
+      const previousValue = previousById.get('userInfo')?.value;
+      const currentValue = typeof decision.value === 'string'
+        ? decision.value
+        : typeof previousValue === 'string'
+          ? previousValue
+          : '';
+      const value = currentValue.replace(/\+下拉$/, '');
+      if (value !== currentValue && definition?.options.includes(value)) {
+        return { ...decision, applied: true, value, reason: '用户明确要求取消用户下拉菜单' };
+      }
+    }
+
+    if (decision.dimensionId === 'logout') {
+      const definition = definitionsById.get('logout');
+      const previousValue = previousById.get('logout')?.value;
+      const currentValue = typeof decision.value === 'string'
+        ? decision.value
+        : typeof previousValue === 'string'
+          ? previousValue
+          : '';
+      if (currentValue.includes('下拉菜单')) {
+        const value = definition?.options.find((option) => /头像右侧|顶栏最右侧/.test(option));
+        if (value) return { ...decision, applied: true, value, reason: '用户取消下拉菜单，退出登录改为顶栏直接展示' };
+      }
+    }
+
+    return decision;
+  });
+}
+
 export function buildDimensionDecisionPrompt(input: {
   systemName: string;
   instruction: string;
@@ -75,7 +122,8 @@ ${input.previous ? `\n【上一版维度方案】\n${JSON.stringify(input.previo
 6. applied=true 时，single-select 的 value 必须严格取自 options；boolean 必须返回布尔值；text 根据系统业务和整体调性生成具体值。
 7. 决策应形成统一、克制且适合该系统业务的整体风格，reason 简要说明采用或不采用的业务依据。
 8. 是否采用以及实际采用多少项均由AI根据当前系统业务自主判断，不设置数量上限；不得为了填满候选池而采用没有实际作用的维度。值为“无”“默认”“空白”“不预填”或布尔 false 的关闭型配置不得标记为 applied=true。
-9. 只返回 JSON 对象：{"systemType":"业务类型","toneSummary":"整体调性","dimensions":[{"dimensionId":"维度ID","applied":true,"value":"具体值","reason":"选择理由"},{"dimensionId":"维度ID","applied":false,"value":null,"reason":"不采用理由"}]}。`;
+9. 用户明确要求取消用户下拉菜单或下拉箭头时，userInfo 必须选择不包含“下拉”的选项，logout 不得选择下拉菜单位置。
+10. 只返回 JSON 对象：{"systemType":"业务类型","toneSummary":"整体调性","dimensions":[{"dimensionId":"维度ID","applied":true,"value":"具体值","reason":"选择理由"},{"dimensionId":"维度ID","applied":false,"value":null,"reason":"不采用理由"}]}。`;
 }
 
 export function parseDimensionPlan(content: string, definitions: DimensionDefinition[]): DimensionPlan {
