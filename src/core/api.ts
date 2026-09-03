@@ -14,6 +14,14 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   return payload;
 }
 
+export type GenerationList<T> = { generations: T[]; total: number; page: number; pageSize: number };
+
+function generationListUrl(path: string, options: { page: number; pageSize: number; search?: string }) {
+  const params = new URLSearchParams({ page: String(options.page), pageSize: String(options.pageSize) });
+  if (options.search) params.set('search', options.search);
+  return `${path}?${params}`;
+}
+
 export const api = {
   authSession: () => request<{ configured: boolean; authenticated: boolean }>('/api/auth/session'),
   login: (username: string, password: string) => request<{ username: string; expiresIn: number }>('/api/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
@@ -53,8 +61,10 @@ export const api = {
   refine: (id: string, instruction: string) => request<{ generation: HistoryRecord }>(`/api/generations/${id}/refine`, { method: 'POST', body: JSON.stringify({ instruction }) }),
   deleteGeneration: (id: string) => request<void>(`/api/generations/${id}`, { method: 'DELETE' }),
   deleteGenerations: (ids: string[]) => request<{ deleted: number }>('/api/generations/bulk-delete', { method: 'POST', body: JSON.stringify({ ids }) }),
+  listGenerations: (options: { page: number; pageSize: number; search?: string }) => request<GenerationList<HistoryRecord>>(generationListUrl('/api/generations', options)),
   generateLogin: (body: { config: LoginConfig; instruction: string; sourceGenerationId?: string }) => request<{ generation: LoginHistoryRecord }>('/api/login-generations', { method: 'POST', body: JSON.stringify(body) }),
   refineLogin: (id: string, instruction: string, backgroundImage: string) => request<{ generation: LoginHistoryRecord }>(`/api/login-generations/${id}/refine`, { method: 'POST', body: JSON.stringify({ instruction, config: { backgroundImage } }) }),
   deleteLoginGeneration: (id: string) => request<void>(`/api/login-generations/${id}`, { method: 'DELETE' }),
   deleteLoginGenerations: (ids: string[]) => request<{ deleted: number }>('/api/login-generations/bulk-delete', { method: 'POST', body: JSON.stringify({ ids }) }),
+  listLoginGenerations: (options: { page: number; pageSize: number; search?: string }) => request<GenerationList<LoginHistoryRecord>>(generationListUrl('/api/login-generations', options)),
 };

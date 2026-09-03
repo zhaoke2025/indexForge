@@ -5,6 +5,7 @@ import path from 'node:path';
 import dotenv from 'dotenv';
 import express from 'express';
 import rateLimit from 'express-rate-limit';
+import { generationSearch, parseGenerationListQuery } from './generation-list.js';
 import helmet from 'helmet';
 import OpenAI from 'openai';
 import { buildHtmlPrompt, buildRepairPrompt, extractCompleteHtml, htmlSystemPrompt } from './ai-html.js';
@@ -409,7 +410,13 @@ const refineIndexRoute = async (req: express.Request, res: express.Response) => 
 };
 app.post('/api/generations/:id/refine', aiLimiter, asyncRoute(refineIndexRoute));
 app.post('/api/integration/generations/:id/refine', requireIntegrationToken, aiLimiter, asyncRoute(refineIndexRoute));
-app.get('/api/generations', (_req, res) => res.json({ generations: store.all<GenerationRow>('SELECT * FROM generation_records ORDER BY created_at DESC LIMIT 100').map(generationDto) }));
+app.get('/api/generations', (req, res) => {
+  const { page, pageSize, search, offset } = parseGenerationListQuery(req.query);
+  const { where, params } = generationSearch(search, ['system_name', 'version_input', 'display_name', 'instruction', 'refinement_instruction', 'tone_summary']);
+  const total = Number(store.get<{ total: number }>(`SELECT COUNT(*) AS total FROM generation_records${where}`, params)?.total || 0);
+  const rows = store.all<GenerationRow>(`SELECT * FROM generation_records${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`, [...params, pageSize, offset]);
+  res.json({ generations: rows.map(generationDto), total, page, pageSize });
+});
 app.post('/api/generations/bulk-delete', (req, res) => { const ids = [...new Set<string>((Array.isArray(req.body?.ids) ? req.body.ids : []).map((id: unknown) => String(id)).filter(Boolean))].slice(0, 100); if (!ids.length) return void res.status(400).json({ error: '请选择需要删除的首页记录' }); store.transaction(() => ids.forEach((id) => store.run('DELETE FROM generation_records WHERE id=?', [id]))); res.json({ deleted: ids.length }); });
 app.get('/api/generations/:id', (req, res) => { const row = store.get<GenerationRow>('SELECT * FROM generation_records WHERE id=?', [req.params.id]); if (!row) return void res.status(404).json({ error: '生成记录不存在' }); res.json({ generation: generationDto(row) }); });
 app.delete('/api/generations/:id', (req, res) => { const id = String(req.params.id); if (!store.get('SELECT id FROM generation_records WHERE id=?', [id])) return void res.status(404).json({ error: '生成记录不存在' }); store.run('DELETE FROM generation_records WHERE id=?', [id]); res.status(204).end(); });
@@ -501,7 +508,13 @@ const refineLoginRoute = async (req: express.Request, res: express.Response) => 
 };
 app.post('/api/login-generations/:id/refine', aiLimiter, asyncRoute(refineLoginRoute));
 app.post('/api/integration/login-generations/:id/refine', requireIntegrationToken, aiLimiter, asyncRoute(refineLoginRoute));
-app.get('/api/login-generations', (_req, res) => res.json({ generations: store.all<GenerationRow>('SELECT * FROM login_generation_records ORDER BY created_at DESC LIMIT 100').map(loginGenerationDto) }));
+app.get('/api/login-generations', (req, res) => {
+  const { page, pageSize, search, offset } = parseGenerationListQuery(req.query);
+  const { where, params } = generationSearch(search, ['system_name', 'version_input', 'slogan', 'instruction', 'refinement_instruction']);
+  const total = Number(store.get<{ total: number }>(`SELECT COUNT(*) AS total FROM login_generation_records${where}`, params)?.total || 0);
+  const rows = store.all<GenerationRow>(`SELECT * FROM login_generation_records${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`, [...params, pageSize, offset]);
+  res.json({ generations: rows.map(loginGenerationDto), total, page, pageSize });
+});
 app.post('/api/login-generations/bulk-delete', (req, res) => { const ids = [...new Set<string>((Array.isArray(req.body?.ids) ? req.body.ids : []).map((id: unknown) => String(id)).filter(Boolean))].slice(0, 100); if (!ids.length) return void res.status(400).json({ error: '请选择需要删除的登录页记录' }); store.transaction(() => ids.forEach((id) => store.run('DELETE FROM login_generation_records WHERE id=?', [id]))); res.json({ deleted: ids.length }); });
 app.delete('/api/login-generations/:id', (req, res) => { const id = String(req.params.id); if (!store.get('SELECT id FROM login_generation_records WHERE id=?', [id])) return void res.status(404).json({ error: '登录页生成记录不存在' }); store.run('DELETE FROM login_generation_records WHERE id=?', [id]); res.status(204).end(); });
 
