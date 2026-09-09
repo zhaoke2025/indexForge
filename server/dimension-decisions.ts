@@ -56,7 +56,9 @@ export function applyExplicitDimensionOverrides(
   const targetsUserArea = /头像|用户(?:信息|名)?|右上角|顶栏|退出登录/.test(instruction);
   const targetsNavigation = /侧边栏|一级菜单|二级菜单|子菜单/.test(instruction);
   const removeUserDropdown = requestsDropdownRemoval && targetsUserArea && !targetsNavigation;
-  if (!removeUserDropdown) return decisions;
+  const removeUserName = /(?:不要|不显示|隐藏|去掉|移除|删除|取消)(?:显示)?\s*(?:用户名|姓名)|(?:用户名|姓名)\s*(?:不要(?:显示)?|不显示|隐藏|去掉|移除|删除|取消)/.test(instruction);
+  const removeUserAvatar = /(?:不要|不显示|隐藏|去掉|移除|删除|取消)(?:显示)?\s*(?:(?:用户名|姓名)[、和及\s]*)?头像/.test(instruction);
+  if (!removeUserDropdown && !removeUserName) return decisions;
 
   const definitionsById = new Map(definitions.map((item) => [item.id, item]));
   const previousById = new Map(previous.map((item) => [item.dimensionId, item]));
@@ -69,13 +71,23 @@ export function applyExplicitDimensionOverrides(
         : typeof previousValue === 'string'
           ? previousValue
           : '';
-      const value = currentValue.replace(/\+下拉$/, '');
-      if (value !== currentValue && definition?.options.includes(value)) {
-        return { ...decision, applied: true, value, reason: '用户明确要求取消用户下拉菜单' };
+      let value = removeUserDropdown ? currentValue.replace(/\+下拉$/, '') : currentValue;
+      if (removeUserName && definition) {
+        value = removeUserAvatar ? '移除用户' : value.split('+').filter((part) => !/用户名|姓名/.test(part)).join('+');
+        if (!definition.options.includes(value)) {
+          const keepAvatar = !removeUserAvatar && (currentValue.includes('头像') || instruction.includes('头像'));
+          value = definition.options.find((option) => !/用户名|姓名/.test(option)
+            && (!removeUserAvatar || !option.includes('头像'))
+            && (!keepAvatar || option.includes('头像'))
+            && (!removeUserDropdown || !option.includes('下拉') || option.includes('无下拉'))) || value || (keepAvatar ? '头像+退出登录按钮' : '移除用户');
+        }
+      }
+      if ((value !== currentValue || (removeUserName && !decision.applied)) && (removeUserName || definition?.options.includes(value))) {
+        return { ...decision, applied: true, value, reason: removeUserName ? '用户明确要求不显示用户名' : '用户明确要求取消用户下拉菜单' };
       }
     }
 
-    if (decision.dimensionId === 'logout') {
+    if (decision.dimensionId === 'logout' && removeUserDropdown) {
       const definition = definitionsById.get('logout');
       const previousValue = previousById.get('logout')?.value;
       const currentValue = typeof decision.value === 'string'

@@ -243,6 +243,11 @@ export function validateHtml(html: string, context: ValidationContext = {}): Val
     : defaultBuiltinValidators;
   const errors = validators.flatMap((validator) => validateBuiltin(html, validator, context));
   const userInfo = context.dimensions?.find((item) => item.id === 'userInfo')?.value;
+  if (typeof userInfo === 'string' && !/用户名|姓名/.test(userInfo)) {
+    const hasUserName = [...html.matchAll(/<[a-z][\w-]*\b[^>]*\s+class\s*=\s*(["'])([^"']*)\1[^>]*>/gi)]
+      .some((match) => match[2].split(/\s+/).includes('user-name'));
+    if (hasUserName) errors.push('用户信息要求不显示用户名，但页面仍存在用户名');
+  }
   if (typeof userInfo === 'string' && !userInfo.includes('下拉')) {
     const hasUserDropdown = [...html.matchAll(/<[a-z][\w-]*\b[^>]*\s+class\s*=\s*(["'])([^"']*)\1[^>]*>/gi)]
       .some((match) => match[2].split(/\s+/).some((className) => ['user-menu-trigger', 'user-menu-arrow', 'user-dropdown'].includes(className)));

@@ -10,7 +10,7 @@ import helmet from 'helmet';
 import OpenAI from 'openai';
 import { buildHtmlPrompt, buildRepairPrompt, extractCompleteHtml, htmlSystemPrompt } from './ai-html.js';
 import { appliedDimensionDecisions, applyExplicitDimensionOverrides, buildDimensionDecisionPrompt, parseDimensionPlan, type DimensionDecision, type DimensionDefinition } from './dimension-decisions.js';
-import { applyFunctionalDimensions, ensureReferencedElementAliases, ensureSidebarToggleAccessible, ensureUserMenuClass } from './html-features.js';
+import { applyFunctionalDimensions, ensureLogoutButtonFrame, ensureReferencedElementAliases, ensureSidebarToggleAccessible, ensureUserMenuClass } from './html-features.js';
 import { validateHtml, validateRequirementChecks } from './html-validator.js';
 import { buildLoginPrompt, buildLoginRepairPrompt, extractLoginHtml, loginSystemPrompt, validateLoginHtml, validateLoginRequirementChecks } from './login-ai.js';
 import { Store, type Row } from './store.js';
@@ -370,7 +370,7 @@ async function requestAi(input: { systemName: string; version: string; instructi
     const checkErrors = requirementChecks.filter((item) => !item.passed).map((item) => `${item.requirementId}：${item.detail}`);
     return { validation: { ...validation, valid: validation.valid && checkErrors.length === 0, errors: [...validation.errors, ...checkErrors.filter((error) => !validation.errors.includes(error))] }, requirementChecks };
   };
-  const applyFeatures = (html: string) => ensureSidebarToggleAccessible(applyFunctionalDimensions(html, appliedDimensions, baseHtml));
+  const applyFeatures = (html: string) => ensureLogoutButtonFrame(ensureSidebarToggleAccessible(applyFunctionalDimensions(html, appliedDimensions, baseHtml)), input.instruction);
   const initialStage = input.current ? 'index.html.refine' : 'index.html.generate';
   const initialHtml = applyFeatures(await createHtml(buildHtmlPrompt({ systemName: input.systemName, version: input.version, instruction: input.instruction, dimensions: activeDimensions, decisions: selectedDecisions, requirements: activeRequirements, baseHtml, refining: Boolean(input.current) }), initialStage, 1));
   const repaired = await repairUntilValid({

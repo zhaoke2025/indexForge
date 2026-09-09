@@ -7,6 +7,75 @@ const definitions: DimensionDefinition[] = [
 ];
 
 describe('AI dimension decisions', () => {
+  it.each(['不要用户名，退出登录按钮在头像右侧，不要收起侧边栏按钮', '隐藏用户名', '用户名不要显示', '去掉姓名'])('overrides an unwanted username for %s', (instruction) => {
+    const userDefinitions: DimensionDefinition[] = [
+      { id: 'userInfo', name: '用户信息', group: '顶栏', description: '', valueType: 'single-select', options: ['头像+姓名', '头像+退出登录按钮'] },
+    ];
+    const decisions = [{ dimensionId: 'userInfo', applied: true, value: '头像+姓名', reason: '' }];
+    expect(applyExplicitDimensionOverrides(instruction, decisions, userDefinitions)[0]).toMatchObject({ applied: true, value: '头像+退出登录按钮' });
+  });
+
+  it('selects a no-name option even when AI did not apply userInfo', () => {
+    const userDefinitions: DimensionDefinition[] = [
+      { id: 'userInfo', name: '用户信息', group: '顶栏', description: '', valueType: 'single-select', options: ['头像+用户名', '头像+无下拉+退出登录按钮'] },
+    ];
+    expect(applyExplicitDimensionOverrides('不要用户名，保留头像', [{ dimensionId: 'userInfo', applied: false, value: null, reason: '' }], userDefinitions)[0])
+      .toMatchObject({ applied: true, value: '头像+无下拉+退出登录按钮' });
+  });
+
+  it('keeps the previous no-name shape active when AI omits it during refinement', () => {
+    const userDefinitions: DimensionDefinition[] = [
+      { id: 'userInfo', name: '用户信息', group: '顶栏', description: '', valueType: 'single-select', options: ['头像+姓名', '头像+退出登录按钮'] },
+    ];
+    const previous = [{ dimensionId: 'userInfo', applied: true, value: '头像+退出登录按钮', reason: '' }];
+    expect(applyExplicitDimensionOverrides('不要用户名', [{ dimensionId: 'userInfo', applied: false, value: null, reason: '' }], userDefinitions, previous)[0])
+      .toMatchObject({ applied: true, value: '头像+退出登录按钮' });
+  });
+
+  it('removes both name and avatar when only logout is requested', () => {
+    const userDefinitions: DimensionDefinition[] = [
+      { id: 'userInfo', name: '用户信息', group: '顶栏', description: '', valueType: 'single-select', options: ['头像+姓名', '头像+退出登录按钮', '移除用户'] },
+    ];
+    expect(applyExplicitDimensionOverrides('不要用户名头像，只要退出登录按钮，且需要用矩形框包裹起来', [{ dimensionId: 'userInfo', applied: true, value: '头像+姓名', reason: '' }], userDefinitions)[0])
+      .toMatchObject({ applied: true, value: '移除用户' });
+  });
+
+  it('does not remove a username when the removal targets another control', () => {
+    const decisions = [{ dimensionId: 'userInfo', applied: true, value: '头像+姓名', reason: '' }];
+    expect(applyExplicitDimensionOverrides('保留用户名，不要下拉箭头', decisions, [])).toEqual(decisions);
+    expect(applyExplicitDimensionOverrides('不要修改用户名', decisions, [])).toEqual(decisions);
+  });
+
+  it('preserves other user features and logout placement when a matching option exists', () => {
+    const userDefinitions: DimensionDefinition[] = [
+      { id: 'userInfo', name: '用户信息', group: '顶栏', description: '', valueType: 'single-select', options: ['头像+用户名+角色+下拉', '头像+角色+下拉'] },
+    ];
+    const decisions = [
+      { dimensionId: 'userInfo', applied: true, value: '头像+用户名+角色+下拉', reason: '' },
+      { dimensionId: 'logout', applied: true, value: '用户信息下拉菜单', reason: '' },
+    ];
+    const result = applyExplicitDimensionOverrides('不要用户名', decisions, userDefinitions);
+    expect(result[0].value).toBe('头像+角色+下拉');
+    expect(result[1]).toEqual(decisions[1]);
+  });
+
+  it('derives an explicit no-name shape when configured options do not cover the request', () => {
+    const userDefinitions: DimensionDefinition[] = [
+      { id: 'userInfo', name: '用户信息', group: '顶栏', description: '', valueType: 'single-select', options: ['头像+姓名'] },
+    ];
+    expect(applyExplicitDimensionOverrides('不要用户名', [{ dimensionId: 'userInfo', applied: true, value: '头像+姓名', reason: '' }], userDefinitions)[0])
+      .toMatchObject({ applied: true, value: '头像' });
+  });
+
+  it('allows removing the whole user area with the existing local configuration', () => {
+    const userDefinitions: DimensionDefinition[] = [
+      { id: 'userInfo', name: '用户信息', group: '顶栏', description: '', valueType: 'single-select', options: ['头像+退出登录按钮', '头像+用户名+下拉', '头像+用户名'] },
+    ];
+    expect(applyExplicitDimensionOverrides('不要用户名头像，只要退出登录按钮，且需要用矩形框包裹起来', [{ dimensionId: 'userInfo', applied: true, value: '头像+用户名', reason: '' }], userDefinitions)[0])
+      .toMatchObject({ applied: true, value: '移除用户' });
+    expect(userDefinitions[0].options).toEqual(['头像+退出登录按钮', '头像+用户名+下拉', '头像+用户名']);
+  });
+
   it('sends definitions without default values and requires an applied decision for every candidate', () => {
     const prompt = buildDimensionDecisionPrompt({ systemName: '供应链系统', instruction: '', dimensions: definitions, page: 'index' });
     expect(prompt).toContain('母版只提供结构和核心功能');

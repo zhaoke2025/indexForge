@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { applyFunctionalDimensions, ensureReferencedElementAliases, ensureSidebarToggleAccessible, ensureUserMenuClass } from './html-features.js';
-import { countVisibleLogoutControls } from './html-validator.js';
+import { applyFunctionalDimensions, ensureLogoutButtonFrame, ensureReferencedElementAliases, ensureSidebarToggleAccessible, ensureUserMenuClass } from './html-features.js';
+import { countVisibleLogoutControls, validateHtml } from './html-validator.js';
+import { appliedDimensionDecisions, applyExplicitDimensionOverrides } from './dimension-decisions.js';
 
 function hasClassElement(html: string, className: string) {
   return [...html.matchAll(/<[^>]+\s+class\s*=\s*(["'])([^"']*)\1[^>]*>/gi)]
@@ -11,6 +12,39 @@ function hasClassElement(html: string, className: string) {
 describe('functional HTML dimensions', () => {
   const template = fs.readFileSync('docs/测试母版-index.html', 'utf8');
   const dropdownDimension = [{ id: 'userInfo', value: '头像+姓名+角色+下拉' }];
+  const framedLogoutInstruction = '不要收起侧边栏按钮，不要用户名头像，只要退出登录按钮，且需要用矩形框包裹起来';
+
+  it.each(['docs/测试母版-index.html', 'docs/母版-index.html'])('frames the standalone logout button after removing the user area in %s', (path) => {
+    const source = fs.readFileSync(path, 'utf8');
+    const dimensions = [{ id: 'userInfo', value: '移除用户' }];
+    const html = ensureLogoutButtonFrame(applyFunctionalDimensions(source, dimensions), framedLogoutInstruction);
+    expect(html).toContain('border: 1px solid currentColor !important');
+    expect(html).toContain('color: inherit !important');
+    expect(hasClassElement(html, 'avatar-circle')).toBe(false);
+    expect(hasClassElement(html, 'user-name')).toBe(false);
+    expect(countVisibleLogoutControls(html)).toBe(1);
+    expect(html).toContain('function bindIndexForgeLogoutButton');
+    expect(ensureLogoutButtonFrame(html, framedLogoutInstruction)).toBe(html);
+    expect(countVisibleLogoutControls(applyFunctionalDimensions(html, dimensions))).toBe(1);
+  });
+
+  it('frames a custom AI logout button without replacing its identity or handler', () => {
+    const html = ensureLogoutButtonFrame('<button id="customLogout" style="border: 0 !important; width: 120px;" onclick="logout()">退出登录</button>', framedLogoutInstruction);
+    expect(html).toContain('border: 1px solid currentColor !important');
+    expect(html).toContain('width: 120px;');
+    expect(html).toContain('id="customLogout"');
+    expect(html).toContain('onclick="logout()"');
+  });
+
+  it('does not frame hidden aliases, script strings or unrelated controls', () => {
+    const html = '<button id="logoutBtn" hidden></button><button>保存</button><script>const html = \'<button>退出登录</button>\';</script>';
+    expect(ensureLogoutButtonFrame(html, framedLogoutInstruction)).toBe(html);
+  });
+
+  it.each(['退出登录只要文字，不要矩形框', '退出登录按钮不需要矩形框', '搜索框需要矩形框', '退出登录按钮在右侧'])('does not force a frame for %s', (instruction) => {
+    const html = '<button>退出登录</button>';
+    expect(ensureLogoutButtonFrame(html, instruction)).toBe(html);
+  });
   const userInfoCases = [
     ['头像+姓名+角色+下拉', true, true, true, true],
     ['头像+姓名+角色', true, true, true, false],
@@ -153,6 +187,37 @@ describe('functional HTML dimensions', () => {
     expect(html).toContain('id="logoutBtn"');
     expect(html).toContain('退出登录');
     expect(html).toContain('function bindIndexForgeLogoutButton');
+  });
+
+  it('removes a direct-child username from the original template and remains valid', () => {
+    const source = fs.readFileSync('docs/母版-index.html', 'utf8');
+    const decisions = applyExplicitDimensionOverrides('不要用户名，退出登录按钮在头像右侧，不要收起侧边栏按钮', [
+      { dimensionId: 'userInfo', applied: true, value: '头像+姓名', reason: '' },
+    ], [
+      { id: 'userInfo', name: '用户信息', group: '顶栏', description: '', valueType: 'single-select', options: ['头像+姓名', '头像+退出登录按钮'] },
+    ]);
+    const dimensions = appliedDimensionDecisions(decisions).map((item) => ({ id: item.dimensionId, value: item.value }));
+    const html = applyFunctionalDimensions(source, dimensions, source);
+    expect(html).not.toContain('旅行探索者');
+    expect(hasClassElement(html, 'user-name')).toBe(false);
+    expect(hasClassElement(html, 'avatar-circle')).toBe(true);
+    expect(countVisibleLogoutControls(html)).toBe(1);
+    expect(html.indexOf('id="logoutBtn"')).toBeGreaterThan(html.indexOf('class="avatar-circle"'));
+    expect(validateHtml(html, { dimensions }).valid).toBe(true);
+    const twice = applyFunctionalDimensions(html, dimensions, source);
+    expect(hasClassElement(twice, 'user-name')).toBe(false);
+    expect(countVisibleLogoutControls(twice)).toBe(1);
+  });
+
+  it('does not restore the template username while restoring a missing avatar', () => {
+    const source = fs.readFileSync('docs/母版-index.html', 'utf8');
+    const candidate = source.replace(/<div class="avatar-circle">[\s\S]*?<\/div>/, '');
+    const dimensions = [{ id: 'userInfo', value: '头像+退出登录按钮' }];
+    const html = applyFunctionalDimensions(candidate, dimensions, source);
+    expect(hasClassElement(html, 'avatar-circle')).toBe(true);
+    expect(hasClassElement(html, 'user-name')).toBe(false);
+    expect(html).not.toContain('旅行探索者');
+    expect(validateHtml(html, { dimensions }).valid).toBe(true);
   });
 
   it('treats 无下拉 as an explicit request to remove the dropdown', () => {

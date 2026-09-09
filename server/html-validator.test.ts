@@ -119,6 +119,20 @@ describe('server HTML validator', () => {
     expect(validateHtml(template, { requirements: [] }).valid).toBe(true);
   });
 
+  it.each(['docs/母版-index.html', 'docs/测试母版-index.html'])('rejects an unwanted username in %s', (path) => {
+    const html = fs.readFileSync(path, 'utf8');
+    const result = validateHtml(html, { dimensions: [{ id: 'userInfo', value: '头像+退出登录按钮' }] });
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('用户信息要求不显示用户名，但页面仍存在用户名');
+  });
+
+  it('allows a requested username and ignores CSS class definitions', () => {
+    expect(validateHtml(template, { dimensions: [{ id: 'userInfo', value: '头像+姓名+角色+下拉' }] }).valid).toBe(true);
+    expect(validateHtml('<html><head><style>.user-name { color: red; }</style></head><body></body></html>', {
+      requirements: [], dimensions: [{ id: 'userInfo', value: '头像+退出登录按钮' }],
+    }).valid).toBe(true);
+  });
+
   it('rejects a remaining user dropdown when the selected shape has no dropdown', () => {
     const result = validateHtml('<html><body><div class="user-menu"><button class="user-menu-trigger"></button><div class="user-dropdown"></div></div></body></html>', {
       requirements: [],

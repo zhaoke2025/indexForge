@@ -47,6 +47,26 @@ export function ensureUserMenuClass(html: string) {
   return addClassToElement(html, 'user-menu-wrapper', 'user-menu');
 }
 
+export function ensureLogoutButtonFrame(html: string, instruction: string) {
+  if (!/退出(?:登录|系统)/.test(instruction) || !/(?:矩形|长方形|方形)(?:边)?框/.test(instruction)
+    || /(?:不要|不需要|去掉|移除|取消)[^，,。；;\n]{0,8}(?:矩形|长方形|方形)(?:边)?框/.test(instruction)) return html;
+  const frameStyle = 'display: inline-flex !important; align-items: center !important; justify-content: center !important; gap: 6px !important; min-height: 34px !important; padding: 0 12px !important; border: 1px solid currentColor !important; border-radius: 4px !important; color: inherit !important; background: transparent !important;';
+  return html.replace(/<!--[\s\S]*?-->|<(script|style|template)\b[^>]*>[\s\S]*?<\/\1>|<(button|a)\b[^>]*>[\s\S]*?<\/\2>/gi, (element: string, skipped: string | undefined) => {
+    if (skipped || element.startsWith('<!--') || countVisibleLogoutControls(element) !== 1) return element;
+    return element.replace(/^<(button|a)\b[^>]*>/i, (opening: string) => {
+      const style = /\sstyle\s*=\s*(["'])([\s\S]*?)\1/i;
+      if (style.test(opening)) {
+        return opening.replace(style, (_attribute: string, quote: string, existing: string) => {
+          const preserved = existing.split(';').filter((declaration) => declaration.trim()
+            && !/^\s*(?:display|align-items|justify-content|gap|min-height|padding|border|border-radius|color|background)\s*:/i.test(declaration)).join(';');
+          return ` style=${quote}${preserved ? `${preserved}; ` : ''}${frameStyle}${quote}`;
+        });
+      }
+      return opening.replace(/>$/, ` style="${frameStyle}">`);
+    });
+  });
+}
+
 function ensureUserMenu(html: string, userInfo: string, fallbackHtml: string) {
   html = ensureUserMenuClass(html);
   if (findUserMenu(html)) return html;
@@ -227,7 +247,14 @@ export function applyFunctionalDimensions(html: string, dimensions: FeatureDimen
   if (userInfo === '移除用户') {
     const bounds = findUserMenu(html);
     const withoutUser = bounds ? `${html.slice(0, bounds.start)}${html.slice(bounds.closingEnd)}` : html;
-    const withLogout = withoutUser.replace(/<\/header>/i, '<button class="btn-logout indexforge-logout-button" id="logoutBtn" type="button"><i class="fa fa-sign-out"></i><span>退出登录</span></button>\n        </header>');
+    if (countVisibleLogoutControls(withoutUser) > 0) return withoutUser;
+    const button = '<button class="btn-logout indexforge-logout-button" id="logoutBtn" type="button"><i class="fa fa-sign-out"></i><span>退出登录</span></button>';
+    const header = findElementByClass(withoutUser, 'app-header');
+    const withLogout = bounds
+      ? `${withoutUser.slice(0, bounds.start)}${button}${withoutUser.slice(bounds.start)}`
+      : header
+        ? `${withoutUser.slice(0, header.start)}${withoutUser.slice(header.start, header.end).replace(/<\/[^>]+>$/, (closing) => `${button}${closing}`)}${withoutUser.slice(header.end)}`
+        : withoutUser.replace(/<\/header>/i, `${button}</header>`);
     return ensureDirectLogoutBehavior(withLogout);
   }
   if (typeof userInfo !== 'string') return html;
@@ -257,9 +284,8 @@ export function applyFunctionalDimensions(html: string, dimensions: FeatureDimen
     }
     if (!showName && !showRole) {
       next = removeElementByClass(next, 'user-meta');
-    } else if (!showName) {
-      next = removeElementByClass(next, 'user-name');
     }
+    if (!showName) next = removeElementByClass(next, 'user-name');
     if (!showRole) next = removeElementByClass(next, 'user-role');
     if (showName && !hasClassElement(next, 'user-name')) {
       next += `<div class="user-meta"><span class="user-name">系统管理员</span>${showRole ? '<span class="user-role">管理员</span>' : ''}</div>`;
