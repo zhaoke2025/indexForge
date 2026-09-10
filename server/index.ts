@@ -370,7 +370,8 @@ async function requestAi(input: { systemName: string; version: string; instructi
     const checkErrors = requirementChecks.filter((item) => !item.passed).map((item) => `${item.requirementId}：${item.detail}`);
     return { validation: { ...validation, valid: validation.valid && checkErrors.length === 0, errors: [...validation.errors, ...checkErrors.filter((error) => !validation.errors.includes(error))] }, requirementChecks };
   };
-  const applyFeatures = (html: string) => ensureLogoutButtonFrame(ensureSidebarToggleAccessible(applyFunctionalDimensions(html, appliedDimensions, baseHtml)), input.instruction);
+  const logoutDescription = appliedDimensions.some((item) => item.id === 'logout') ? activeDimensions.find((item) => item.id === 'logout')?.description : undefined;
+  const applyFeatures = (html: string) => ensureLogoutButtonFrame(ensureSidebarToggleAccessible(applyFunctionalDimensions(html, appliedDimensions, baseHtml)), input.instruction, logoutDescription);
   const initialStage = input.current ? 'index.html.refine' : 'index.html.generate';
   const initialHtml = applyFeatures(await createHtml(buildHtmlPrompt({ systemName: input.systemName, version: input.version, instruction: input.instruction, dimensions: activeDimensions, decisions: selectedDecisions, requirements: activeRequirements, baseHtml, refining: Boolean(input.current) }), initialStage, 1));
   const repaired = await repairUntilValid({

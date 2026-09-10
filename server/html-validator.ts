@@ -1,3 +1,5 @@
+import { userInfoShape } from './dimension-decisions.js';
+
 export type ValidationResult = { valid: boolean; errors: string[]; warnings: string[] };
 export type ValidationRequirement = { id: string; validationType: string; builtinValidator?: string };
 type ValidationContext = { requirements?: ValidationRequirement[]; systemName?: string; dimensions?: Array<{ id: string; value: unknown }> };
@@ -243,12 +245,17 @@ export function validateHtml(html: string, context: ValidationContext = {}): Val
     : defaultBuiltinValidators;
   const errors = validators.flatMap((validator) => validateBuiltin(html, validator, context));
   const userInfo = context.dimensions?.find((item) => item.id === 'userInfo')?.value;
-  if (typeof userInfo === 'string' && !/用户名|姓名/.test(userInfo)) {
+  if (typeof userInfo === 'string' && userInfoShape(userInfo).avatar) {
+    const hasAvatar = [...html.matchAll(/<[a-z][\w-]*\b[^>]*\s+class\s*=\s*(["'])([^"']*)\1[^>]*>/gi)]
+      .some((match) => match[2].split(/\s+/).includes('avatar-circle'));
+    if (!hasAvatar) errors.push('用户信息要求显示头像，但页面缺少头像');
+  }
+  if (typeof userInfo === 'string' && !userInfoShape(userInfo).name) {
     const hasUserName = [...html.matchAll(/<[a-z][\w-]*\b[^>]*\s+class\s*=\s*(["'])([^"']*)\1[^>]*>/gi)]
       .some((match) => match[2].split(/\s+/).includes('user-name'));
     if (hasUserName) errors.push('用户信息要求不显示用户名，但页面仍存在用户名');
   }
-  if (typeof userInfo === 'string' && !userInfo.includes('下拉')) {
+  if (typeof userInfo === 'string' && !userInfoShape(userInfo).dropdown) {
     const hasUserDropdown = [...html.matchAll(/<[a-z][\w-]*\b[^>]*\s+class\s*=\s*(["'])([^"']*)\1[^>]*>/gi)]
       .some((match) => match[2].split(/\s+/).some((className) => ['user-menu-trigger', 'user-menu-arrow', 'user-dropdown'].includes(className)));
     if (hasUserDropdown) errors.push('用户信息要求无下拉菜单，但页面仍存在下拉触发器或菜单');

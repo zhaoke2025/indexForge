@@ -7,6 +7,11 @@ const definitions: DimensionDefinition[] = [
 ];
 
 describe('AI dimension decisions', () => {
+  it.each(['仅退出登录', '头像+无下拉+退出登录按钮+无用户名'])('preserves the requested avatar with production options when AI selects %s', (value) => {
+    const definitions: DimensionDefinition[] = [{ id: 'userInfo', name: '顶栏用户信息', group: '信息装饰层', description: '', valueType: 'single-select', options: ['头像+无下拉+退出登录按钮+无用户名', '头像+用户名+下拉', '仅退出登录'] }];
+    const result = applyExplicitDimensionOverrides('退出登录按钮：在头像右侧（去掉用户名，但是有头像）；头像颜色：灰色', [{ dimensionId: 'userInfo', applied: true, value, reason: '' }], definitions);
+    expect(result[0].value).toBe('头像+无下拉+退出登录按钮+无用户名');
+  });
   it.each(['不要用户名，退出登录按钮在头像右侧，不要收起侧边栏按钮', '隐藏用户名', '用户名不要显示', '去掉姓名'])('overrides an unwanted username for %s', (instruction) => {
     const userDefinitions: DimensionDefinition[] = [
       { id: 'userInfo', name: '用户信息', group: '顶栏', description: '', valueType: 'single-select', options: ['头像+姓名', '头像+退出登录按钮'] },

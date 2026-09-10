@@ -1,4 +1,5 @@
 import { countVisibleLogoutControls } from './html-validator.js';
+import { userInfoShape } from './dimension-decisions.js';
 
 type FeatureDimension = { id: string; value: unknown };
 
@@ -47,10 +48,14 @@ export function ensureUserMenuClass(html: string) {
   return addClassToElement(html, 'user-menu-wrapper', 'user-menu');
 }
 
-export function ensureLogoutButtonFrame(html: string, instruction: string) {
-  if (!/退出(?:登录|系统)/.test(instruction) || !/(?:矩形|长方形|方形)(?:边)?框/.test(instruction)
-    || /(?:不要|不需要|去掉|移除|取消)[^，,。；;\n]{0,8}(?:矩形|长方形|方形)(?:边)?框/.test(instruction)) return html;
-  const frameStyle = 'display: inline-flex !important; align-items: center !important; justify-content: center !important; gap: 6px !important; min-height: 34px !important; padding: 0 12px !important; border: 1px solid currentColor !important; border-radius: 4px !important; color: inherit !important; background: transparent !important;';
+export function ensureLogoutButtonFrame(html: string, instruction: string, logoutDescription = '') {
+  const requirement = /(?:矩形|长方形|方形)(?:边)?框/.test(instruction) ? instruction : logoutDescription;
+  if (!/退出(?:登录|系统)/.test(requirement) || !/(?:矩形|长方形|方形)(?:边)?框/.test(requirement)
+    || /(?:不要|不需要|去掉|移除|取消)[^，,。；;\n]{0,8}(?:矩形|长方形|方形)(?:边)?框/.test(requirement)) return html;
+  const colorPattern = /退出登录(?:按钮)?(?:的)?(?:文字|字体)(?:颜色)?(?:用|为|是|：|:|改成|改为)?\s*(白色|灰色)/;
+  const requestedColor = colorPattern.exec(instruction)?.[1] || colorPattern.exec(logoutDescription)?.[1];
+  const color = requestedColor === '白色' ? '#FFFFFF' : requestedColor === '灰色' ? '#64748B' : 'inherit';
+  const frameStyle = `display: inline-flex !important; align-items: center !important; justify-content: center !important; gap: 6px !important; min-height: 34px !important; padding: 0 12px !important; border: 1px solid currentColor !important; border-radius: 4px !important; color: ${color} !important; background: transparent !important;`;
   return html.replace(/<!--[\s\S]*?-->|<(script|style|template)\b[^>]*>[\s\S]*?<\/\1>|<(button|a)\b[^>]*>[\s\S]*?<\/\2>/gi, (element: string, skipped: string | undefined) => {
     if (skipped || element.startsWith('<!--') || countVisibleLogoutControls(element) !== 1) return element;
     return element.replace(/^<(button|a)\b[^>]*>/i, (opening: string) => {
@@ -72,8 +77,8 @@ function ensureUserMenu(html: string, userInfo: string, fallbackHtml: string) {
   if (findUserMenu(html)) return html;
   const fallbackUserMenu = userMenuHtml(fallbackHtml);
   if (fallbackUserMenu) return html.replace(/<\/header>/i, `${fallbackUserMenu}\n        </header>`);
-  const avatar = userInfo.includes('头像') ? '<div class="avatar-circle"><i class="fa fa-user-o"></i></div>' : '';
-  const role = userInfo.includes('角色') ? '<span class="user-role">管理员</span>' : '';
+  const avatar = userInfoShape(userInfo).avatar ? '<div class="avatar-circle"><i class="fa fa-user-o"></i></div>' : '';
+  const role = userInfoShape(userInfo).role ? '<span class="user-role">管理员</span>' : '';
   const userMenu = `<div class="user-menu">
                 ${avatar}
                 <div class="user-meta">
@@ -262,13 +267,11 @@ export function applyFunctionalDimensions(html: string, dimensions: FeatureDimen
   html = ensureUserMenu(html, userInfo, fallbackHtml);
   if (!findUserMenu(html)) return html;
 
-  const showAvatar = userInfo.includes('头像');
-  const showName = userInfo.includes('姓名') || userInfo.includes('用户名');
-  const showRole = userInfo.includes('角色');
+  const { avatar: showAvatar, name: showName, role: showRole, dropdown } = userInfoShape(userInfo);
   const explicitlyNoDropdown = userInfo.includes('无下拉');
   const logoutInDropdown = typeof logout === 'string' && logout.includes('下拉菜单');
   const logoutOutsideDropdown = typeof logout === 'string' && /头像右侧|顶栏最右侧|侧边栏最底部|单独/.test(logout);
-  const showDropdown = !explicitlyNoDropdown && (userInfo.includes('下拉') || logoutInDropdown);
+  const showDropdown = !explicitlyNoDropdown && (dropdown || logoutInDropdown);
   const showDirectLogout = !showDropdown || logoutOutsideDropdown;
   const missingRequiredElement = (showName && !hasClassElement(html, 'user-name'))
     || (showAvatar && !hasClassElement(html, 'avatar-circle'))

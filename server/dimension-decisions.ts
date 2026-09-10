@@ -42,6 +42,11 @@ function hasActiveEffect(dimensionId: string, value: unknown) {
 
 export type AppliedDimensionDecision = DimensionDecision & { applied: true; value: string | boolean };
 
+export function userInfoShape(value: string) {
+  const positive = value.split('+').map((part) => part.trim()).filter((part) => !/^(?:无|不显示|不要|隐藏|移除)/.test(part)).join('+');
+  return { avatar: positive.includes('头像'), name: /用户名|姓名/.test(positive), role: positive.includes('角色'), dropdown: positive.includes('下拉') };
+}
+
 export function appliedDimensionDecisions(decisions: DimensionDecision[]): AppliedDimensionDecision[] {
   return decisions.filter((item): item is AppliedDimensionDecision => item.applied === true && item.value !== null);
 }
@@ -73,13 +78,14 @@ export function applyExplicitDimensionOverrides(
           : '';
       let value = removeUserDropdown ? currentValue.replace(/\+下拉$/, '') : currentValue;
       if (removeUserName && definition) {
-        value = removeUserAvatar ? '移除用户' : value.split('+').filter((part) => !/用户名|姓名/.test(part)).join('+');
-        if (!definition.options.includes(value)) {
-          const keepAvatar = !removeUserAvatar && (currentValue.includes('头像') || instruction.includes('头像'));
-          value = definition.options.find((option) => !/用户名|姓名/.test(option)
-            && (!removeUserAvatar || !option.includes('头像'))
-            && (!keepAvatar || option.includes('头像'))
-            && (!removeUserDropdown || !option.includes('下拉') || option.includes('无下拉'))) || value || (keepAvatar ? '头像+退出登录按钮' : '移除用户');
+        value = removeUserAvatar ? '移除用户' : value.split('+').filter((part) => !userInfoShape(part).name).join('+');
+        const keepAvatar = !removeUserAvatar && (userInfoShape(currentValue).avatar || instruction.includes('头像'));
+        const compatible = (option: string) => {
+          const shape = userInfoShape(option);
+          return !shape.name && (!removeUserAvatar || !shape.avatar) && (!keepAvatar || shape.avatar) && (!removeUserDropdown || !shape.dropdown);
+        };
+        if (!definition.options.includes(value) || !compatible(value)) {
+          value = definition.options.find(compatible) || (value && compatible(value) ? value : keepAvatar ? '头像+退出登录按钮' : '移除用户');
         }
       }
       if ((value !== currentValue || (removeUserName && !decision.applied)) && (removeUserName || definition?.options.includes(value))) {

@@ -3,6 +3,13 @@ import { describe, expect, it } from 'vitest';
 import { validateHtml, validateRequirementChecks } from './html-validator.js';
 
 describe('server HTML validator', () => {
+  it('rejects a missing required avatar and understands negative user-info tokens', () => {
+    const html = '<div class="user-menu"><span class="user-name">旅行探索者</span><button class="user-menu-trigger"></button><button>退出登录</button></div>';
+    const result = validateHtml(html, { requirements: [], dimensions: [{ id: 'userInfo', value: '头像+无下拉+退出登录按钮+无用户名' }] });
+    expect(result.errors).toContain('用户信息要求显示头像，但页面缺少头像');
+    expect(result.errors).toContain('用户信息要求不显示用户名，但页面仍存在用户名');
+    expect(result.errors).toContain('用户信息要求无下拉菜单，但页面仍存在下拉触发器或菜单');
+  });
   const template = fs.readFileSync('docs/测试母版-index.html', 'utf8');
 
   it('accepts the built-in template', () => {
@@ -128,7 +135,7 @@ describe('server HTML validator', () => {
 
   it('allows a requested username and ignores CSS class definitions', () => {
     expect(validateHtml(template, { dimensions: [{ id: 'userInfo', value: '头像+姓名+角色+下拉' }] }).valid).toBe(true);
-    expect(validateHtml('<html><head><style>.user-name { color: red; }</style></head><body></body></html>', {
+    expect(validateHtml('<html><head><style>.user-name { color: red; }</style></head><body><div class="avatar-circle"></div></body></html>', {
       requirements: [], dimensions: [{ id: 'userInfo', value: '头像+退出登录按钮' }],
     }).valid).toBe(true);
   });

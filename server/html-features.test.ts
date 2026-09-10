@@ -12,6 +12,30 @@ function hasClassElement(html: string, className: string) {
 describe('functional HTML dimensions', () => {
   const template = fs.readFileSync('docs/测试母版-index.html', 'utf8');
   const dropdownDimension = [{ id: 'userInfo', value: '头像+姓名+角色+下拉' }];
+  it('applies the frame from the logout dimension description', () => {
+    const html = ensureLogoutButtonFrame('<button id="logoutBtn">退出登录</button>', '去掉用户名，但是有头像', '退出登录文字用灰色，且用矩形框包裹');
+    expect(html).toContain('border: 1px solid currentColor !important');
+    expect(html).toContain('color: #64748B !important');
+  });
+
+  it('lets an explicit no-frame request override the dimension description', () => {
+    const source = '<button id="logoutBtn">退出登录</button>';
+    expect(ensureLogoutButtonFrame(source, '退出登录不要矩形框', '退出登录文字用灰色，且用矩形框包裹')).toBe(source);
+  });
+
+  it('lets an explicit logout text color override the dimension description', () => {
+    const html = ensureLogoutButtonFrame('<button id="logoutBtn">退出登录</button>', '退出登录文字用白色', '退出登录文字用灰色，且用矩形框包裹');
+    expect(html).toContain('color: #FFFFFF !important');
+  });
+  it('honors the production no-username option without removing the avatar', () => {
+    const dimensions = [{ id: 'userInfo', value: '头像+无下拉+退出登录按钮+无用户名' }];
+    const html = applyFunctionalDimensions(template, dimensions, template);
+    expect(hasClassElement(html, 'avatar-circle')).toBe(true);
+    expect(hasClassElement(html, 'user-name')).toBe(false);
+    expect(hasClassElement(html, 'user-dropdown')).toBe(false);
+    expect(countVisibleLogoutControls(html)).toBe(1);
+    expect(validateHtml(html, { dimensions }).valid).toBe(true);
+  });
   const framedLogoutInstruction = '不要收起侧边栏按钮，不要用户名头像，只要退出登录按钮，且需要用矩形框包裹起来';
 
   it.each(['docs/测试母版-index.html', 'docs/母版-index.html'])('frames the standalone logout button after removing the user area in %s', (path) => {
