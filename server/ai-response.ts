@@ -3,7 +3,8 @@ export type CompletionShape = {
   usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
 };
 
-export function withoutThinking<T extends object>(params: T): T & { thinking: { type: 'disabled' } } {
+export function withoutThinking<T extends object>(params: T, baseURL = process.env.OPENAI_BASE_URL || 'https://api.deepseek.com') {
+  if (new URL(baseURL).hostname.endsWith('.aliyuncs.com')) return { ...params, enable_thinking: false };
   return { ...params, thinking: { type: 'disabled' } };
 }
 
