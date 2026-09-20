@@ -140,7 +140,7 @@ function injectUserDropdown(html: string): string {
         .user-menu-arrow {
             border: none;
             background: transparent;
-            color: inherit;
+            color: inherit !important;
             cursor: pointer;
             width: 24px;
             height: 24px;
@@ -148,6 +148,10 @@ function injectUserDropdown(html: string): string {
             align-items: center;
             justify-content: center;
             opacity: 0.72;
+        }
+
+        .user-menu-arrow i {
+            color: inherit !important;
         }
 
         .user-dropdown {
@@ -200,6 +204,9 @@ function injectUserDropdown(html: string): string {
             const userMenu = document.querySelector('.user-menu');
             const dropdown = document.getElementById('userDropdownMenu');
             if (!userMenu || !dropdown) return;
+            const trigger = userMenu.querySelector('.user-menu-arrow');
+            const userName = userMenu.querySelector('.user-name');
+            if (trigger && userName) trigger.style.setProperty('color', getComputedStyle(userName).color, 'important');
             userMenu.addEventListener('click', (event) => {
                 event.stopPropagation();
                 dropdown.classList.toggle('open');

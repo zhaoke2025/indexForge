@@ -84,6 +84,8 @@ describe('functional HTML dimensions', () => {
     expect(html).toContain('id="indexForgeUserDropdown"');
     expect(html).toContain('修改密码');
     expect(html).toContain('退出登录');
+    expect(html).toContain("const userName = userMenu.querySelector('.user-name');");
+    expect(html).toContain("trigger.style.setProperty('color', getComputedStyle(userName).color, 'important');");
   });
 
   it('does not duplicate the dropdown when applied twice', () => {

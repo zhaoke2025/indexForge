@@ -15,6 +15,8 @@ describe('generateIndexHtml', () => {
     expect(result.validation.valid).toBe(true);
     expect(result.displayName).toBe('<测试平台> V1.2');
     expect(result.html).toContain('&lt;测试平台&gt; V1.2');
+    expect(result.html).toContain("const userName = userMenu.querySelector('.user-name');");
+    expect(result.html).toContain("trigger.style.setProperty('color', getComputedStyle(userName).color, 'important');");
   });
 
   it.each([

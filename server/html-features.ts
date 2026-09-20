@@ -330,8 +330,9 @@ export function applyFunctionalDimensions(html: string, dimensions: FeatureDimen
         .user-menu-trigger {
             display: inline-flex; align-items: center; justify-content: center;
             width: 26px; height: 26px; padding: 0; border: 0;
-            color: inherit; background: transparent; cursor: pointer;
+            color: inherit !important; background: transparent; cursor: pointer;
         }
+        .user-menu-trigger i { color: inherit !important; }
         .user-dropdown {
             position: absolute; z-index: 100; top: calc(100% + 10px); right: 0;
             display: none; min-width: 150px; padding: 6px;
@@ -357,6 +358,8 @@ export function applyFunctionalDimensions(html: string, dimensions: FeatureDimen
             const trigger = document.getElementById('indexForgeUserMenuTrigger');
             const userDropdown = document.getElementById('indexForgeUserDropdown');
             if (!userMenu || !trigger || !userDropdown) return;
+            const userName = userMenu.querySelector('.user-name');
+            if (userName) trigger.style.setProperty('color', getComputedStyle(userName).color, 'important');
             trigger.addEventListener('click', function(event) {
                 event.stopPropagation();
                 userDropdown.classList.toggle('open');
